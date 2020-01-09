@@ -1,5 +1,5 @@
 /**
- * Copyright 2019, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -51,7 +51,8 @@
 #define APP_AVRC_TEMP_BUF           128
 
 //#define BTAVRCP_TRACE_DEBUG
-
+#define AVRC_TG_PLAYER_ID           1
+#define AVRC_TG_PLAYER_NAME "Player"
 
 #ifdef BTAVRCP_TRACE_DEBUG
 #define WICED_BTAVRCP_TRACE WICED_BT_TRACE
@@ -109,6 +110,7 @@ const uint8_t  app_avrc_meta_caps_evt_ids[] = {
 #ifdef APP_AVRC_SETTING_CHANGE_SUPPORTED
     AVRC_EVT_APP_SETTING_CHANGE,
 #endif
+    AVRC_EVT_VOLUME_CHANGE,
 };
 
 /******************************************************************************
@@ -320,6 +322,8 @@ void wiced_bt_avrc_tg_register_for_notification( uint8_t event_id )
 {
     wiced_bt_avrc_command_t cmd;
     BT_HDR *p_pkt = NULL;
+
+    WICED_BTAVRCP_TRACE("%s: event_id %d handle %d\n\r", __FUNCTION__, event_id, wiced_bt_avrc_tg_cb.avrc_handle);
 
     if ( wiced_bt_avrc_tg_cb.avrc_handle != INVALID_AVRC_HANDLE )
     {
@@ -1057,6 +1061,11 @@ BT_HDR * wiced_bt_avrc_tg_register_notifications_handler(uint8_t handle, wiced_b
         }
         break;
 #endif
+        case AVRC_EVT_VOLUME_CHANGE:
+        {
+            // Reply back with the current volume
+            p_response->reg_notif.param.volume = wiced_bt_avrc_tg_cb.last_abs_volume;
+        }break;
     }
 
 #if (defined(APP_AVRC_TRACK_INFO_SUPPORTED)            || \
@@ -1072,7 +1081,44 @@ BT_HDR * wiced_bt_avrc_tg_register_notifications_handler(uint8_t handle, wiced_b
 #endif
 
     return p_rsp;
+}
 
+void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uint8_t pdu_id, BT_HDR * p_rsp, wiced_bt_avrc_response_t * p_avrc_rsp)
+{
+    uint8_t status = AVRC_STS_NOT_FOUND;
+
+    if((ctype != AVRC_RSP_NOT_IMPL) && (p_rsp == NULL))
+    {
+        WICED_BTAVRCP_TRACE("%s: getting info from MCU app :%d. pdu:%d", __FUNCTION__, handle, pdu_id);
+    }
+    else
+    {
+        if(p_rsp == NULL)
+        {
+            ctype = AVRC_RSP_NOT_IMPL;
+            status = wiced_bt_avrc_bld_response(handle, p_avrc_rsp, &p_rsp);
+        }
+
+        if(p_rsp)
+        {
+            if(ctype == AVRC_RSP_NOT_IMPL)
+            {
+                 WICED_BTAVRCP_TRACE("%s: Sending not implemented response to handle:%d. pdu:%d",
+                __FUNCTION__, handle, pdu_id);
+            }
+            else
+            {
+                 WICED_BTAVRCP_TRACE("%s: Sending response to handle:%d. pdu:%d",
+                __FUNCTION__, handle, pdu_id);
+            }
+
+            if (wiced_bt_avrc_msg_req (wiced_bt_avrc_tg_cb.avrc_handle, label, ctype, p_rsp) != AVRC_SUCCESS)
+            {
+                WICED_BTAVRCP_TRACE( "failed to send response\n\r");
+            }
+        }
+    }
+    UNUSED_VARIABLE(status);
 }
 
 /*******************************************************************************
@@ -1222,43 +1268,237 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
         }
 
         break;
-
+    case AVRC_PDU_SET_ADDRESSED_PLAYER:
+        if (command.addr_player.player_id != AVRC_TG_PLAYER_ID) {
+            ctype = AVRC_RSP_REJ;
+            avrc_rsp.rsp.status = AVRC_STS_BAD_PLAYER_ID;
+        }
+        else {
+            ctype = AVRC_RSP_ACCEPT;
+            avrc_rsp.rsp.status = AVRC_STS_NO_ERROR;
+        }
+        wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+        break;
+    case AVRC_PDU_SET_ABSOLUTE_VOLUME:
+    {
+        ctype = AVRC_RSP_ACCEPT;
+        avrc_rsp.rsp.status = AVRC_STS_NO_ERROR;
+        /*
+        * Update the volume as received. <TBD>
+        */
+        wiced_bt_avrc_tg_update_abs_volume(command.volume.volume);
+        wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+    }break;
     default:
         ctype = AVRC_RSP_NOT_IMPL;
     }
 
-    if((ctype != AVRC_RSP_NOT_IMPL) && (p_rsp == NULL))
+    if (p_rsp) {
+        wiced_bt_avrc_tg_send_rsp(handle, label, ctype, pdu_id, p_rsp, &avrc_rsp);
+    }
+    else if((ctype != AVRC_RSP_NOT_IMPL) && (p_rsp == NULL))
     {
         WICED_BTAVRCP_TRACE("%s: getting info from MCU app :%d. pdu:%d", __FUNCTION__, handle, pdu_id);
     }
-    else
+
+    wiced_bt_free_buffer(temp_buff);
+}
+
+void wiced_bt_avrc_tg_handle_set_browsed_player(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
     {
-        if(p_rsp == NULL)
+    if(p_command->addr_player.player_id){
+
+    }
+}
+
+int wiced_bt_avrc_tg_get_uid_counter(uint8_t scope)
         {
-            ctype = AVRC_RSP_NOT_IMPL;
-            status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+    if(scope == AVRC_SCOPE_PLAYER_LIST)
+        return 1;
+
+    return -1;
         }
 
-        if(p_rsp)
+wiced_bt_avrc_item_t tg_players[] = {
         {
-            if(ctype == AVRC_RSP_NOT_IMPL)
-            {
-                 WICED_BTAVRCP_TRACE("%s: Sending not implemented response to handle:%d. pdu:%d",
-                __FUNCTION__, handle, pdu_id);
-            }
-            else
-            {
-                 WICED_BTAVRCP_TRACE("%s: Sending response to handle:%d. pdu:%d",
-                __FUNCTION__, handle, pdu_id);
+        .item_type = AVRC_ITEM_PLAYER,
+        .u.player.player_id = AVRC_TG_PLAYER_ID,
+        .u.player.major_type = AVRC_PLAYER_MAJOR_TYPE_AUDIO,
+        .u.player.sub_type = AVRC_PLAYER_SUB_TYPE_NONE,
+        .u.player.features = {
+                0x00, /**/
+                0x00, /**/
+                0x00, /**/
+                0x00, /**/
+                0xE0, /* vol up , vol dn, mute */
+                0xB3, /* Play, Stop, Pause, Rewind, Fast Forward, forward*/
+                0x01, /* Backward */
+                0x06, /* Avrc 1.4, Browsing */
+                0x08,
+        },
+        .u.player.name.charset_id = AVRC_CHARSET_ID_UTF8,
+        .u.player.name.str_len = sizeof(AVRC_TG_PLAYER_NAME),
+        .u.player.name.p_str = (uint8_t *)AVRC_TG_PLAYER_NAME
+    }
+};
+
+void wiced_bt_avrc_tg_handle_get_folder_items(uint8_t handle,
+        uint8_t label,
+        wiced_bt_avrc_command_t * p_command,
+        BT_HDR **pp_rsp )
+    {
+    wiced_bt_avrc_response_t avrc_rsp;
+    uint8_t status = AVRC_STS_NOT_FOUND;
+
+    avrc_rsp.get_items.opcode = AVRC_OP_BROWSE;
+    avrc_rsp.get_items.status = AVRC_STS_NO_ERROR;
+    avrc_rsp.get_items.pdu = AVRC_PDU_GET_FOLDER_ITEMS;
+
+    if(p_command->get_items.scope == AVRC_SCOPE_PLAYER_LIST &&
+        (p_command->get_items.start_item == 0))
+    {
+            avrc_rsp.get_items.uid_counter = wiced_bt_avrc_tg_get_uid_counter(AVRC_SCOPE_PLAYER_LIST);
+            avrc_rsp.get_items.item_count = sizeof(tg_players) / sizeof(tg_players[0]);
+            avrc_rsp.get_items.p_item_list = tg_players;
+    }else{
+        avrc_rsp.get_items.status = AVRC_STS_BAD_RANGE;
+        avrc_rsp.get_items.item_count = 0;
+        avrc_rsp.get_items.p_item_list = NULL;
             }
 
-            if (wiced_bt_avrc_msg_req (wiced_bt_avrc_tg_cb.avrc_handle, label, ctype, p_rsp) != AVRC_SUCCESS)
-            {
-                WICED_BTAVRCP_TRACE( "failed to send response\n\r");
-            }
+    status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, pp_rsp);
+    UNUSED_VARIABLE(status);
+    return;
+}
+
+void wiced_bt_avrc_tg_handle_change_path(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+        {
+    //p_command->chg_path;
+
         }
+
+void wiced_bt_avrc_tg_handle_get_item_attributes(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+        {
+    wiced_bt_avrc_response_t avrc_rsp;
+    wiced_bt_avrc_get_attrs_rsp_t *p_attrs = &avrc_rsp.get_attrs;
+    uint8_t status = AVRC_STS_NOT_FOUND;
+
+    p_attrs->opcode = AVRC_OP_BROWSE;
+    p_attrs->status = AVRC_STS_NO_ERROR;
+    p_attrs->pdu = AVRC_PDU_GET_FOLDER_ITEMS;
+
+        }
+
+void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+        {
+    wiced_bt_avrc_response_t avrc_rsp;
+    wiced_bt_avrc_get_num_of_items_rsp_t *p_rsp_data = &avrc_rsp.get_num_of_items;
+    uint8_t status = AVRC_STS_BAD_SCOPE;
+
+    if(p_command->get_num_of_items.scope != AVRC_SCOPE_PLAYER_LIST)
+            {
+        return ;
     }
 
+    p_rsp_data->opcode = AVRC_OP_BROWSE;
+    p_rsp_data->status = AVRC_STS_NO_ERROR;
+    p_rsp_data->pdu    = AVRC_PDU_GET_TOTAL_NUM_OF_ITEMS;
+
+    p_rsp_data->num_items = sizeof(tg_players) / sizeof(tg_players[0]);
+    p_rsp_data->uid_counter = wiced_bt_avrc_tg_get_uid_counter(p_command->get_num_of_items.scope);
+
+    status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, pp_rsp);
+    UNUSED_VARIABLE(status);
+    return;
+            }
+
+void wiced_bt_avrc_tg_handle_search(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+            {
+    //p_command->search;
+
+            }
+
+void wiced_bt_avrc_tg_handle_general_reject(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+            {
+
+}
+
+
+/*******************************************************************************
+* Function        wiced_bt_avrc_tg_browse_command_handler
+
+** Description    handle avrc target commands
+*******************************************************************************/
+void wiced_bt_avrc_tg_browse_command_handler( uint8_t handle, uint8_t label, uint8_t opcode, wiced_bt_avrc_msg_browse_t *p_msg )
+{
+    BT_HDR *p_rsp = NULL;
+    uint8_t *p_in = p_msg->p_browse_data;
+    uint8_t status = AVRC_STS_NOT_FOUND;
+    uint8_t pdu_id = 0;
+    uint8_t     ctype = AVRC_RSP_ACCEPT;
+    uint8_t     *temp_buff = (uint8_t *)wiced_bt_get_buffer( APP_AVRC_TEMP_BUF );
+    wiced_bt_avrc_response_t    avrc_rsp;
+    wiced_bt_avrc_sts_t         avrc_sts;
+    wiced_bt_avrc_command_t command;
+
+    BE_STREAM_TO_UINT8  (pdu_id, p_in);
+
+    WICED_BTAVRCP_TRACE("%s: pdu:%d", __FUNCTION__, pdu_id);
+
+    memset(&command, 0, sizeof(wiced_bt_avrc_command_t));
+    memset (&avrc_rsp, 0, sizeof(wiced_bt_avrc_response_t));
+
+    avrc_rsp.rsp.opcode = opcode;
+    avrc_rsp.rsp.pdu    = pdu_id;
+    avrc_rsp.rsp.status = status;
+
+    avrc_sts = wiced_bt_avrc_parse_command((wiced_bt_avrc_msg_t *)p_msg, &command,  temp_buff, APP_AVRC_TEMP_BUF);
+
+    if(temp_buff == NULL)
+            {
+        WICED_BTAVRCP_TRACE("error wiced_bt_get_buffer returns NULL\n");
+            }
+
+    if(AVRC_STS_NO_ERROR != avrc_sts)
+            {
+            WICED_BTAVRCP_TRACE("wiced_bt_avrc_parse_command error return %d\n", avrc_sts);
+
+            ctype = AVRC_RSP_REJ;
+            avrc_rsp.rsp.status = avrc_sts;
+
+            wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+            WICED_BTAVRCP_TRACE("wiced_bt_avrc_parse_command sts:%d %d\n", avrc_rsp.rsp.status);
+
+        }
+        else
+        switch(pdu_id)
+        {
+        case AVRC_PDU_SET_BROWSED_PLAYER:
+            wiced_bt_avrc_tg_handle_set_browsed_player(handle , label, &command, &p_rsp);
+            break;
+        case AVRC_PDU_GET_FOLDER_ITEMS:
+            wiced_bt_avrc_tg_handle_get_folder_items(handle , label, &command, &p_rsp );
+            break;
+        case AVRC_PDU_CHANGE_PATH:
+            wiced_bt_avrc_tg_handle_change_path(handle , label, &command, &p_rsp );
+            break;
+        case AVRC_PDU_GET_ITEM_ATTRIBUTES:
+            wiced_bt_avrc_tg_handle_get_item_attributes(handle , label, &command, &p_rsp );
+            break;
+        case AVRC_PDU_GET_TOTAL_NUM_OF_ITEMS:
+            wiced_bt_avrc_tg_handle_get_total_num_of_items(handle , label, &command, &p_rsp );
+            break;
+        case AVRC_PDU_SEARCH:
+            wiced_bt_avrc_tg_handle_search(handle , label, &command, &p_rsp );
+            break;
+        case AVRC_PDU_GENERAL_REJECT:
+            wiced_bt_avrc_tg_handle_general_reject(handle , label, &command, &p_rsp );
+            break;
+        default:
+            break;
+    }
+
+    wiced_bt_avrc_tg_send_rsp(handle, label, ctype, pdu_id, p_rsp, &avrc_rsp);
 
     wiced_bt_free_buffer(temp_buff);
 }
@@ -1386,6 +1626,9 @@ void wiced_bt_avrc_tg_command_handler( uint8_t handle, uint8_t label, uint8_t op
 
     /* Unhandled */
     case AVRC_OP_BROWSE:    /**< Browsing                   */
+    {
+        wiced_bt_avrc_tg_browse_command_handler( handle, label, opcode, &p_msg->browse);
+    }break;
     case AVRC_OP_UNIT_INFO: /**< Report unit information    */
     case AVRC_OP_SUB_INFO:  /**< Report subunit information */
     default:
@@ -1610,6 +1853,8 @@ wiced_result_t wiced_bt_avrc_tg_open(wiced_bt_device_address_t peer_addr)
         {
             wiced_bt_avrc_tg_cb.conn_role = role;
             WICED_BTAVRCP_TRACE( "avrc open success for %d role (avrc status 0x%x)\n\r", role, avrc_status );
+
+            wiced_bt_avrc_open_browse(wiced_bt_avrc_tg_cb.avrc_handle, AVRC_CONN_ACCEPTOR);
         }
         else
         {
@@ -1678,12 +1923,23 @@ wiced_result_t wiced_bt_avrc_tg_absolute_volume_changed(uint16_t handle,   uint8
 
     WICED_BTAVRCP_TRACE("avrc_handle:%x", wiced_bt_avrc_tg_cb.avrc_handle);
 
-    if (wiced_bt_avrc_tg_cb.avrc_handle != INVALID_AVRC_HANDLE)
+    if (wiced_bt_avrc_tg_cb.avrc_handle == INVALID_AVRC_HANDLE)
     {
+        return WICED_ERROR;
+    }
+
         if (volume > MAX_AVRCP_VOLUME_LEVEL)
         {
             volume = MAX_AVRCP_VOLUME_LEVEL;
         }
+
+    /* If remote has registered for volume notifications, then notify else send absolute volume command */
+    if (wiced_bt_avrc_tg_cb.registered_event_mask & (1 << (AVRC_EVT_VOLUME_CHANGE - 1)))
+    {
+        wiced_bt_avrc_tg_complete_notification(AVRC_EVT_VOLUME_CHANGE);
+    }
+    else
+    {
         cmd.volume.pdu      = AVRC_PDU_SET_ABSOLUTE_VOLUME;  /**< PDU ID AVRC_PDU_SET_ABSOLUTE_VOLUME */
         cmd.volume.status   = AVRC_STS_NO_ERROR;             /**< Not used in the command */
         cmd.volume.opcode   = AVRC_OP_VENDOR;                /**< Op Code.  Should be AVRC_OP_VENDOR */
