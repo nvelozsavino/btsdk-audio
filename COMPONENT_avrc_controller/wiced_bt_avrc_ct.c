@@ -266,6 +266,7 @@ typedef struct
     wiced_bool_t                        app_event_enabled;
 #if AVRC_ADV_CTRL_INCLUDED == TRUE
     uint8_t                             abs_volume_reg_label;
+    uint8_t                             abs_volume_supported;
 #endif
     rcc_transaction_t                   transaction[MAX_TRANSACTIONS_PER_SESSION];
     uint8_t                             current_volume;
@@ -296,6 +297,9 @@ typedef struct
     wiced_bt_avrc_ct_cmd_cback_t                cmd_cb;
     wiced_bt_avrc_ct_rsp_cback_t                rsp_cb;
     wiced_bt_avrc_ct_pt_rsp_cback_t             pt_rsp_cb;
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+    wiced_bt_avrc_ct_features_cback_t           features_callback;
+#endif
 
     rcc_device_t                                device[MAX_CONNECTED_RCC_DEVICES];
     wiced_bt_sdp_discovery_db_t                 *p_disc_db;
@@ -483,7 +487,9 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
     rcc_device_t *prcc_dev = NULL;
     uint8_t cb_indx        = INVALID_CB_INDEX;
     uint8_t free_cb_indx   = INVALID_CB_INDEX;
-
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+    wiced_bt_avrc_ct_features_data_t features_data;
+#endif
     uint8_t txn_indx;
 
     wiced_bt_avrc_ct_connection_state_t connection_state = REMOTE_CONTROL_DISCONNECTED;
@@ -540,14 +546,26 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
                                    connection_state,
                                    (uint32_t)prcc_dev->peer_features);
             }
-
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+            /* We don't know, yet, if the peer device supports Absolute volume */
+            if (rcc_cb.features_callback)
+            {
+                /* Tell the app that it's not supported */
+                features_data.abs_vol_supported.handle = handle;
+                features_data.abs_vol_supported.supported = WICED_FALSE;
+                rcc_cb.features_callback(WICED_BT_AVRC_CT_FEATURES_ABS_VOL_SUPPORTED,
+                        &features_data);
+            }
+#endif
         break;
 
         case AVRC_CLOSE_IND_EVT:
             prcc_dev->state = RCC_STATE_IDLE;
             rcc_cb.remote_features = 0;
             rcc_cb.flags = 0;
-
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+            prcc_dev->abs_volume_supported = 0;
+#endif
             /* Need to clean up the transaction list. */
             for( txn_indx = 0; txn_indx < MAX_TRANSACTIONS_PER_SESSION; txn_indx++ )
             {
@@ -1962,6 +1980,7 @@ static BT_HDR *wiced_bt_avrc_ct_receive_notification_registration(
 {
     BT_HDR *p_rsp_pkt = NULL;
     *p_code = AVRC_RSP_REJ;
+    wiced_bt_avrc_ct_features_data_t features_data;
 
     WICED_BTAVRCP_TRACE( "%s: Enter... label: %d event_id: %d\n",
                       __FUNCTION__, label, p_cmd->reg_notif.event_id);
@@ -1989,6 +2008,19 @@ static BT_HDR *wiced_bt_avrc_ct_receive_notification_registration(
             WICED_BTAVRCP_TRACE("%s: Failed to create response packet: %d\n", __FUNCTION__, aStatus);
         }
 
+        /* Tell the application that the peer device supports Absolute volume */
+        if ((rcc_dev->abs_volume_supported == 0) &&
+            (rcc_cb.features_callback))
+        {
+            WICED_BTAVRCP_TRACE( "%s: Absolute Volume Supported handle:%d\n",
+                    __FUNCTION__, rcc_dev->rc_handle );
+            /* We will sent this event only once (first time the peer register for this event) */
+            rcc_dev->abs_volume_supported = 1;
+            features_data.abs_vol_supported.handle = rcc_dev->rc_handle;
+            features_data.abs_vol_supported.supported = WICED_TRUE;
+            rcc_cb.features_callback(WICED_BT_AVRC_CT_FEATURES_ABS_VOL_SUPPORTED,
+                    &features_data);
+        }
     }
     else
     {
@@ -2286,6 +2318,8 @@ wiced_result_t wiced_bt_avrc_ct_init(uint32_t local_features,
 
 #if AVRC_ADV_CTRL_INCLUDED == TRUE
         rcc_dev->abs_volume_reg_label = INVALID_TRANSACTION_LABEL;
+        /* Suppose by default that the peer does not support Absolute Volume */
+        rcc_dev->abs_volume_supported = 0;
 #endif
 
         for( txn_indx = 0; txn_indx < MAX_TRANSACTIONS_PER_SESSION; txn_indx++ )
@@ -2322,6 +2356,25 @@ wiced_result_t wiced_bt_avrc_ct_init(uint32_t local_features,
 
     return result;
 }
+
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+/**
+ * Function         wiced_bt_avrc_ct_features_register
+ *
+ *                  Register for AVRC Feature events.
+ *                  This, optional, function must be called after wiced_bt_avrc_ct_init
+ *
+ * @return          wiced_result_t
+ *
+ */
+wiced_result_t wiced_bt_avrc_ct_features_register(
+        wiced_bt_avrc_ct_features_cback_t features_callback)
+{
+    rcc_cb.features_callback = features_callback;
+
+    return WICED_BT_SUCCESS;
+}
+#endif
 
 /**
  * Function         wiced_bt_avrc_ct_cleanup
