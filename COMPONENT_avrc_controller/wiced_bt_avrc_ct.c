@@ -41,6 +41,9 @@
 #include "wiced_bt_trace.h"
 #include "string.h"
 #include "wiced_memory.h"
+#ifndef CYW20706A2
+#include "bt_target.h"
+#endif
 
 #define CASE_RETURN_STR(const) case const: return #const;
 
@@ -107,7 +110,7 @@ typedef enum {
 } btrcc_pass_cmd;
 
 /* global constant for "any" bd addr */
-const wiced_bt_device_address_t bd_addr_any0 = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+wiced_bt_device_address_t bd_addr_any0 = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 #define isValidPassThruComd(x) (((x) >= PASS_CMD_PLAY) && ((x) <= PASS_CMD_BACKWARD))
 
@@ -382,6 +385,8 @@ void bdcpy(wiced_bt_device_address_t a, const wiced_bt_device_address_t b);
 
 static void wiced_bt_avrc_ct_rcc_display(void);
 
+static void wiced_bt_avrc_ct_connection_open(uint8_t *p_handle, uint8_t role, wiced_bt_device_address_t bdaddr, uint8_t local_feature);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -494,11 +499,7 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
 
     wiced_bt_avrc_ct_connection_state_t connection_state = REMOTE_CONTROL_DISCONNECTED;
 
-    WICED_BTAVRCP_TRACE( "%s rc_acp_handle 0: [%d] rc_acp_handle 1: [%d] event: %s[%d]\n", __FUNCTION__,
-                    rcc_cb.rc_acp_handle[0],
-                    rcc_cb.rc_acp_handle[1],
-                    dump_event_name(event),
-                    event );
+    WICED_BTAVRCP_TRACE( "%s event: %s[%d]\n", __FUNCTION__, dump_event_name(event), event );
 
     /* Locate the address in our cb list. If not there, this is remote connection */
     cb_indx = wiced_bt_avrc_ct_device_index_for_address( peer_addr, &free_cb_indx );
@@ -583,18 +584,16 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
             if(prcc_dev->role == AVRC_CONN_INITIATOR)
             {
                 int i;
-                wiced_bt_avrc_conn_cb_t ccb;
+
                 for(i = 0; i< MAX_CONNECTED_RCC_DEVICES; i++)
                 {
                     if( rcc_cb.rc_acp_handle[i] == handle )
                     {
-                        ccb.p_ctrl_cback = wiced_bt_avrc_ctrl_cback;
-                        ccb.p_msg_cback  = wiced_bt_avrc_msg_cback;
-                        ccb.company_id   = AVRC_CO_METADATA;
-                        ccb.conn         = AVRC_CONN_ACCEPTOR;
-                        ccb.control      = rcc_cb.local_features;
-                        result = wiced_bt_avrc_open( &rcc_cb.rc_acp_handle[i], &ccb, (BD_ADDR_PTR) bd_addr_any0 );
-                        WICED_BTAVRCP_TRACE("%s: Re-opening RC connection(idle)[%d] result:%d\n",__FUNCTION__, handle, result);
+                        wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[i],
+                                                         AVRC_CONN_ACCEPTOR,
+                                                         bd_addr_any0,
+                                                         rcc_cb.local_features);
+
                         prcc_dev->role = AVRC_CONN_ACCEPTOR;
                         break;
                     }
@@ -1048,6 +1047,8 @@ uint16_t wiced_bt_avrc_ct_find_service(uint16_t service_uuid, wiced_bt_device_ad
 *******************************************************************************/
 static void wiced_bt_avrc_ct_sdp_cback( uint16_t status )
 {
+    uint8_t i;
+
     WICED_BTAVRCP_TRACE( "%s status %d\n", __FUNCTION__, status  );
 
     /* If SDP failed and SDP was triggered by API Open RC, notify upper layer */
@@ -1066,6 +1067,19 @@ static void wiced_bt_avrc_ct_sdp_cback( uint16_t status )
                                     REMOTE_CONTROL_DISCONNECTED, 0 );
         }
         rcc_cb.remote_features = 0;
+
+        /* Create a AVCT connection as acceptor. */
+        for (i = 0 ; i < MAX_CONNECTED_RCC_DEVICES ; i++)
+        {
+            if (rcc_cb.device[i].rc_handle == INVALID_TRANSACTION_LABEL)
+            {
+                wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[i],
+                                                 AVRC_CONN_ACCEPTOR,
+                                                 bd_addr_any0,
+                                                 rcc_cb.local_features | RCC_FEAT_METADATA | RCC_FEAT_VENDOR);
+                break;
+            }
+        }
         return;
     }
 
@@ -1088,7 +1102,6 @@ void wiced_bt_avrc_ct_discovery_done()
     wiced_bt_avrc_conn_cb_t ccb;
     uint8_t cb_indx         = INVALID_CB_INDEX;
     uint8_t free_cb_indx    = INVALID_CB_INDEX;
-    uint16_t status;
 
     rcc_device_t *prcc_dev = NULL;
 
@@ -1141,21 +1154,12 @@ void wiced_bt_avrc_ct_discovery_done()
             ( ( rcc_cb.local_features & REMOTE_CONTROL_FEATURE_TARGET ) &&
               ( rcc_cb.remote_features  & REMOTE_CONTROL_FEATURE_CONTROLLER ) ) )
         {
-            ccb.p_ctrl_cback = wiced_bt_avrc_ctrl_cback;
-            ccb.p_msg_cback = wiced_bt_avrc_msg_cback;
-            ccb.company_id = AVRC_CO_METADATA;
-            ccb.conn = AVRC_CONN_INITIATOR;
-            ccb.control = rcc_cb.local_features &
-                (REMOTE_CONTROL_FEATURE_CONTROLLER | REMOTE_CONTROL_FEATURE_TARGET);
+            wiced_bt_avrc_ct_connection_open(&prcc_dev->rc_handle,
+                                             AVRC_CONN_INITIATOR,
+                                             rcc_cb.sdb_bd_addr,
+                                             rcc_cb.local_features & (REMOTE_CONTROL_FEATURE_CONTROLLER | REMOTE_CONTROL_FEATURE_TARGET));
 
-            WICED_BTAVRCP_TRACE("%s calling wiced_bt_avrc_open: <%B>", __FUNCTION__,
-                rcc_cb.sdb_bd_addr);
-
-            status = wiced_bt_avrc_open(&prcc_dev->rc_handle, &ccb,
-                (BD_ADDR_PTR)rcc_cb.sdb_bd_addr);
             prcc_dev->role = AVRC_CONN_INITIATOR;
-            WICED_BTAVRCP_TRACE("%s wiced_bt_avrc_open returns:%d", __FUNCTION__, status);
-            UNUSED_VARIABLE(status);
         }
     }
     else
@@ -2330,13 +2334,10 @@ wiced_result_t wiced_bt_avrc_ct_init(uint32_t local_features,
 
         if( ( rcc_cb.rc_acp_handle[dev_indx] == 0 ) && (local_features & ( REMOTE_CONTROL_FEATURE_CONTROLLER | REMOTE_CONTROL_FEATURE_TARGET )) )
         {
-            ccb.p_ctrl_cback = wiced_bt_avrc_ctrl_cback;
-            ccb.p_msg_cback = wiced_bt_avrc_msg_cback;
-            ccb.company_id = AVRC_CO_METADATA;
-            ccb.conn = AVRC_CONN_ACCEPTOR;
-            ccb.control = local_features | RCC_FEAT_METADATA | RCC_FEAT_VENDOR; /* | RCC_FEAT_BROWSE | RCC_FEAT_REPORT; */
-            result = (wiced_result_t)wiced_bt_avrc_open( &rcc_cb.rc_acp_handle[dev_indx], &ccb, (BD_ADDR_PTR) bd_addr_any0 );
-            WICED_BTAVRCP_TRACE("%s: Opening RC connection(idle)[%d] result:%d\n",__FUNCTION__, rcc_cb.rc_acp_handle[dev_indx], result);
+            wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[dev_indx],
+                                             AVRC_CONN_ACCEPTOR,
+                                             bd_addr_any0,
+                                             local_features | RCC_FEAT_METADATA | RCC_FEAT_VENDOR);
         }
     }
 
@@ -2398,11 +2399,12 @@ wiced_result_t wiced_bt_avrc_ct_cleanup( void )
     {
         rcc_device_t *rcc_dev = &rcc_cb.device[dev_indx];
 
-        if( rcc_dev->rc_handle != 0 )
+        if( rcc_dev->rc_handle != INVALID_TRANSACTION_LABEL)
         {
             WICED_BTAVRCP_TRACE( "%s handle: %d\n", __FUNCTION__, rcc_dev->rc_handle );
 
             wiced_bt_avrc_close( rcc_dev->rc_handle );
+            rcc_dev->rc_handle = INVALID_TRANSACTION_LABEL;
 
             // TODO: Transaction cleanup
         }
@@ -2471,6 +2473,7 @@ wiced_result_t wiced_bt_avrc_ct_connect( wiced_bt_device_address_t remote_addr )
                 if (rcc_cb.device[dev_indx].role == AVRC_CONN_ACCEPTOR)
                 {
                     wiced_bt_avrc_close(rcc_cb.rc_acp_handle[dev_indx]);
+                    rcc_cb.device[dev_indx].rc_handle = INVALID_TRANSACTION_LABEL;
                 }
 
                 wiced_bt_avrc_ct_start_discovery(remote_addr);
@@ -2488,6 +2491,7 @@ wiced_result_t wiced_bt_avrc_ct_connect( wiced_bt_device_address_t remote_addr )
             (rcc_cb.device[dev_indx].role == AVRC_CONN_ACCEPTOR))
         {
             wiced_bt_avrc_close(rcc_cb.rc_acp_handle[dev_indx]);
+            rcc_cb.device[dev_indx].rc_handle = INVALID_TRANSACTION_LABEL;
             wiced_bt_avrc_ct_start_discovery(remote_addr);
             rcc_cb.flags |= RCC_FLAG_RC_API_OPEN_PENDING;
 
@@ -2521,6 +2525,7 @@ wiced_result_t wiced_bt_avrc_ct_disconnect( uint8_t handle )
     {
         WICED_BTAVRCP_TRACE( "%s Calling avrc-close [%d]\n", __FUNCTION__, prcc_dev->rc_handle );
         wiced_bt_avrc_close( prcc_dev->rc_handle );
+        prcc_dev->rc_handle = INVALID_TRANSACTION_LABEL;
 
         // TODO: Transaction cleanup
     }
@@ -4040,6 +4045,38 @@ wiced_result_t wiced_bt_avrc_ct_lrac_switch_set(void *p_opaque, uint16_t sync_da
     memcpy(&rcc_cb.device, p_switch_data->device, sizeof(rcc_cb.device));
 
     return WICED_BT_SUCCESS;
+}
+
+/*
+ * wiced_bt_avrc_ct_connection_open
+ *
+ * Open AVCT connection for target device
+ *
+ * @param[in]   p_handle: assigned handle for the AVRC connection
+ *
+ * @param[in]   role: AVRC_CONN_INITIATOR or AVRC_CONN_ACCEPTOR
+ *
+ * @param[in]   bdaddr: target device's bdaddr
+ *
+ * @param[in]   local_feature
+ */
+static void wiced_bt_avrc_ct_connection_open(uint8_t *p_handle, uint8_t role, wiced_bt_device_address_t bdaddr, uint8_t local_feature)
+{
+    wiced_bt_avrc_conn_cb_t ccb;
+    uint16_t result;
+
+    ccb.p_ctrl_cback = wiced_bt_avrc_ctrl_cback;
+    ccb.p_msg_cback  = wiced_bt_avrc_msg_cback;
+    ccb.company_id   = AVRC_CO_METADATA;
+    ccb.conn         = role;
+    ccb.control      = local_feature;
+
+    result = wiced_bt_avrc_open(p_handle, &ccb, (BD_ADDR_PTR) bdaddr);
+
+    if (result != AVRC_SUCCESS)
+    {
+        WICED_BTAVRCP_TRACE("%s (%B, 0x%02X, %d)\n", __FUNCTION__, bdaddr, *p_handle, result);
+    }
 }
 
 /** @}*/

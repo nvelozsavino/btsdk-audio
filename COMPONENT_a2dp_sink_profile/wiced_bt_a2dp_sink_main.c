@@ -39,10 +39,11 @@
 #include "wiced_bt_a2dp_sink_int.h"
 #include "string.h"
 
+extern void wiced_bt_a2dp_sink_report_cback(uint8_t handle, AVDT_REPORT_TYPE type,
+                                    wiced_bt_avdt_report_data_t *p_data);
 /*****************************************************************************
 ** Global data
 *****************************************************************************/
-
 /* A2DP sink control block */
 wiced_bt_a2dp_sink_cb_t wiced_bt_a2dp_sink_cb;
 

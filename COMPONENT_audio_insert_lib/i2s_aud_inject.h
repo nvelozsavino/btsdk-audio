@@ -41,7 +41,7 @@
  */
 typedef enum
 {
-#ifdef CYW20721B2
+#if defined(CYW20721B2) || defined(CYW43012C0)
     I2S_AUD_INJECT_EVT_FILL_FIFO    = 1, /* i2s aud inject request to fill hardware FIFO with audio data */
     I2S_AUD_INJECT_EVT_AUDIO_INFO   = 2, /* i2s aud inject indicates the sample rate for the pending audio injection */
     LITE_HOST_EVT_START_SCO_INJECT  = 3, /* Lite Host indicates start SCO audio injection */

@@ -38,8 +38,6 @@
  *
  */
 
-#include "brcm_fw_types.h"
-#include "wiced.h"
 #include "wiced_bt_ak4679_reg_map.h"
 #include "wiced_bt_codec_ak4679.h"
 #include "wiced_hal_i2c.h"
@@ -175,7 +173,7 @@ void ak4679_clock_stop(void)
 void wiced_bt_ak4679_init(uint32_t pdn_gpio, uint32_t scl_i2c, uint32_t sda_i2c)
 {
     g_pdn_gpio = pdn_gpio;
-
+#ifndef CYW43012C0
     wiced_hal_gpio_configure_pin( g_pdn_gpio, GPIO_OUTPUT_ENABLE, GPIO_PIN_OUTPUT_HIGH);
 
     wiced_hal_i2c_select_pads(scl_i2c, sda_i2c);
@@ -185,6 +183,7 @@ void wiced_bt_ak4679_init(uint32_t pdn_gpio, uint32_t scl_i2c, uint32_t sda_i2c)
     wiced_hal_gpio_set_pin_output(g_pdn_gpio, GPIO_PIN_OUTPUT_LOW);
     platform_ak4679_delay_ms(10);
     wiced_hal_gpio_set_pin_output(g_pdn_gpio, GPIO_PIN_OUTPUT_HIGH);
+#endif
 #ifdef DSP_BOOT_RAMDOWNLOAD
     platform_ak4679_delay_ms(10);
     ak4679_write_reg( 0x00, 0x00 ); //dummy

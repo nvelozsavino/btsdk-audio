@@ -259,7 +259,7 @@ void wiced_bt_a2dp_sink_ctrl_cback(uint8_t handle, wiced_bt_device_address_t bd_
 ** Function         wiced_bt_a2dp_sink_report_cback
 ** Description      Report callback.
 *******************************************************************************/
-static void wiced_bt_a2dp_sink_report_cback(uint8_t handle, AVDT_REPORT_TYPE type,
+void wiced_bt_a2dp_sink_report_cback(uint8_t handle, AVDT_REPORT_TYPE type,
                                     wiced_bt_avdt_report_data_t *p_data)
 {
     /* Will be implemented later if needed. */
@@ -277,7 +277,11 @@ void wiced_bt_a2dp_sink_sdp_complete_cback(uint16_t sdp_res)
     wiced_bt_sdp_protocol_elem_t     elem;
     wiced_bt_a2dp_sink_sdp_res_t     msg;
     uint16_t                         avdt_version;
+#if 1
+    uint16_t                        i;
+#else
     wiced_bt_a2dp_sink_scb_t        *p_scb = wiced_bt_a2dp_sink_cb.p_scb;
+#endif
 
     memset(&msg, 0, sizeof(wiced_bt_a2dp_sink_sdp_res_t));
 
@@ -290,12 +294,36 @@ void wiced_bt_a2dp_sink_sdp_complete_cback(uint16_t sdp_res)
     }
 
     /* Check if service is available */
+#if 1
+    for (i = 0 ; i < WICED_BT_A2DP_SINK_MAX_SEPS ; i++)
+    {
+        if (wiced_bt_a2dp_sink_cb.p_scb[i].p_sdp_db)
+        {
+            p_rec = wiced_bt_sdp_find_service_in_db(wiced_bt_a2dp_sink_cb.p_scb[i].p_sdp_db,
+                                                    UUID_SERVCLASS_AUDIO_SOURCE,
+                                                    p_rec);
+
+            if (p_rec)
+            {
+                WICED_BT_TRACE("%s audio source found in %B\n", __FUNCTION__, wiced_bt_a2dp_sink_cb.p_scb[i].peer_addr);
+                break;
+            }
+        }
+    }
+
+    if (p_rec == NULL)
+    {
+        msg.hdr.event = WICED_BT_A2DP_SINK_SDP_DISC_FAIL_EVT;
+        goto wiced_a2dp_sink_sdp_complete;
+    }
+#else
     if ((p_rec = wiced_bt_sdp_find_service_in_db(p_scb->p_sdp_db,
         UUID_SERVCLASS_AUDIO_SOURCE, p_rec)) == NULL)
     {
         msg.hdr.event = WICED_BT_A2DP_SINK_SDP_DISC_FAIL_EVT;
         goto wiced_a2dp_sink_sdp_complete;
     }
+#endif
 
     /* Get AVDTP version */
     if (wiced_bt_sdp_find_protocol_list_elem_in_rec(p_rec,
@@ -305,6 +333,10 @@ void wiced_bt_a2dp_sink_sdp_complete_cback(uint16_t sdp_res)
         WICED_BTA2DP_TRACE("%s: avdt_version: 0x%04x \n", __FUNCTION__, avdt_version);
         msg.hdr.event = WICED_BT_A2DP_SINK_SDP_DISC_OK_EVT;
         msg.avdt_version = avdt_version;
+    }
+    else
+    {
+        msg.hdr.event = WICED_BT_A2DP_SINK_SDP_DISC_FAIL_EVT;
     }
 
 wiced_a2dp_sink_sdp_complete:
@@ -794,12 +826,25 @@ void wiced_bt_a2dp_sink_connect_req(wiced_bt_a2dp_sink_ccb_t *p_ccb,
         wiced_bt_a2dp_sink_data_t *p_data)
 {
     wiced_bt_a2dp_sink_scb_t *p_scb = p_ccb->p_scb;
+#if 1
+    uint16_t result;
+#endif
 
-    WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
+#if 1
+    WICED_BT_TRACE("%s (%B) \n", __FUNCTION__, p_ccb->peer_addr);
+#else
+    WICED_BTA2DP_TRACE("%s (%B) \n", __FUNCTION__, p_ccb->peer_addr);
+#endif
 
     p_scb->avdt_version = p_data->sdp_res.avdt_version;
     wiced_bt_a2dp_sink_free_sdb(p_ccb, p_data);
+#if 1
+    result = wiced_bt_avdt_connect_req(p_ccb->peer_addr, 0, p_ccb->p_dt_cback);
+
+    WICED_BT_TRACE("wiced_bt_avdt_connect_req result: %d\n", result);
+#else
     wiced_bt_avdt_connect_req(p_ccb->peer_addr, 0/*Not Used*/, p_ccb->p_dt_cback);
+#endif
 }
 
 /*******************************************************************************

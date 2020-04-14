@@ -346,6 +346,7 @@ extern wiced_bool_t avrcp_profile_role;
 *****************************************************************************/
 /* main functions */
 extern void     bt_hs_spk_control_reconnect(void);
+wiced_bool_t    bt_hs_spk_control_reconnect_peer_bdaddr_get(wiced_bt_device_address_t peer_bdaddr);
 wiced_bool_t    bt_hs_spk_control_reconnect_state_get(void);
 void            bt_hs_spk_control_reconnect_info_reset(void);
 
@@ -393,6 +394,21 @@ wiced_bool_t bt_hs_spk_control_connection_status_check_be_edr(wiced_bool_t all);
  */
 wiced_result_t bt_hs_spk_control_bt_power_mode_set(wiced_bool_t active, wiced_bt_device_address_t bdaddr, BT_HS_SPK_CONTROL_POWER_MODE_CHANGE_CB *p_cb);
 
+/**
+ * bt_hs_spk_control_bt_power_mode_set_exclusive
+ *
+ * Set the BT power mode except for the target device's link
+ *
+ * @param[in]   active: WICED_TRUE - set to active mode
+ *                      WICED_FALSE - set to sniff mode
+ *
+ * @param[in]   bdaddr: the exclusive peer device's BT address
+ *
+ * @param[in]   p_cb: callback function when the power mode has been changed
+ *
+ */
+void bt_hs_spk_control_bt_power_mode_set_exclusive(wiced_bool_t active, wiced_bt_device_address_t bdaddr, BT_HS_SPK_CONTROL_POWER_MODE_CHANGE_CB *p_cb);
+
 /*
  * bt_hs_spk_control_discoverable_timeout_get
  *
@@ -403,37 +419,12 @@ wiced_result_t bt_hs_spk_control_bt_power_mode_set(wiced_bool_t active, wiced_bt
 uint16_t bt_hs_spk_control_discoverable_timeout_get(void);
 
 /**
- * @brief       Acquire the Bluetooth Link Key for specific device
- *
- * @param[in]   BT/BLE link keys info
- * @param[out]  key: the stored link key if found
- * @return      WICED_TRUE: Link key for the target device is found.
- *              WICED_FALSE: Link key for the target device cannot be found.
- *
- * @note        Each time this utility is executed, the link key list will be sorted.
- *              That is, the link key for the specific device will be pushed to the first
- *              entry of the link key database and the NVRAM field will be updated.
- */
-wiced_bool_t bt_hs_spk_control_link_key_get(wiced_bt_device_link_keys_t *link_keys_request);
-
-/**
  * @brief       Update the Bluetooth Link Key to NVRAM if NVRAM writing is pending
  *
  * @note        The operation for writing NVRAM will disable thread preemption
  *
  */
 void bt_hs_spk_control_link_key_nvram_update(void);
-
-/**
- * @brief       Update the Bluetooth Link Key to database and NVRAM
- *
- * @param[in]   BT/BLE link keys info
- * @param[in]   key: link key
- *
- * @note        The link key for the target device will be pushed to the first entry of the
- *              link key database.
- */
-void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t * link_keys_update);
 
 /**
  * bt_hs_spk_control_link_keys_get
@@ -459,6 +450,27 @@ wiced_bt_device_link_keys_t *bt_hs_spk_control_link_keys_get(void);
 wiced_result_t bt_hs_spk_control_link_keys_set(wiced_bt_device_link_keys_t *p_link_keys);
 
 /**
+ * bt_hs_spk_control_btm_event_handler_encryption_status
+ *
+ * Handle the BTM event, BTM_ENCRYPTION_STATUS_EVT
+ *
+ * @param p_event_data
+ */
+void bt_hs_spk_control_btm_event_handler_encryption_status(wiced_bt_dev_encryption_status_t *p_event_data);
+
+/**
+ * bt_hs_spk_control_btm_event_handler_encryption_status
+ *
+ * Handle the BTM event, BTM_PAIRED_DEVICE_LINK_KEYS_UPDATE_EVT and BTM_PAIRED_DEVICE_LINK_KEYS_REQUEST_EVT
+ *
+ * @param p_link_key
+ *
+ * @return  WICED_TRUE - success
+ *          WICED_FALSE - fail
+ */
+wiced_bool_t bt_hs_spk_control_btm_event_handler_link_key(wiced_bt_management_evt_t event, wiced_bt_device_link_keys_t *p_link_key);
+
+/**
  * bt_hs_spk_control_btm_event_handler_power_management_status
  *
  * Handle the BTM event, BTM_POWER_MANAGEMENT_STATUS_EVT
@@ -478,6 +490,18 @@ void bt_hs_spk_control_btm_event_handler_power_management_status(wiced_bt_power_
  *                 WICED_FALSE: disable sniff mode
  */
 void bt_hs_spk_control_acl_link_policy_sniff_mode_set(wiced_bt_device_address_t bdaddr, wiced_bool_t enable);
+
+/**
+ * bt_hs_spk_control_acl_link_policy_sniff_mode_set_exclusive
+ *
+ * Set the sniff mode enable/disable except for the target acl connection
+ *
+ * @param bdaddr - the exclusive peer device's BT address
+ *
+ * @param enable - WICED_TRUE: enable sniff mode
+ *                 WICED_FALSE: disable sniff mode
+ */
+void bt_hs_spk_control_acl_link_policy_sniff_mode_set_exclusive(wiced_bt_device_address_t bdaddr, wiced_bool_t enable);
 
 /**
  * bt_hs_spk_control_acl_link_policy_set
@@ -554,5 +578,20 @@ void bt_hs_spk_control_connection_info_get(bt_hs_spk_control_connection_info_t *
  *          WICED_FALSE - data is invalid (all 0s)
  */
 wiced_bool_t bt_hs_spk_control_misc_data_content_check(uint8_t *p_data, uint32_t len);
+
+/**
+ * bt_hs_spk_control_bt_role_set
+ *
+ * Set the IUT role with the target connection
+ *
+ * @param[in]   bdaddr - peer device's address
+ * @param[in]   target_role - HCI_ROLE_MASTER
+ *                            HCI_ROLE_SLAVE
+ *
+ * @return      WICED_BT_BADARG
+ *              WICED_BT_ERROR
+ *              WICED_BT_SUCCESS
+ */
+wiced_result_t bt_hs_spk_control_bt_role_set(wiced_bt_device_address_t bdaddr, uint8_t target_role);
 
 #endif /* BT_HS_SPK_CONTROL_H */

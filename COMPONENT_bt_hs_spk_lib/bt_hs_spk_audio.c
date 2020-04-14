@@ -239,6 +239,12 @@ void bt_hs_spk_audio_streaming_stop(void)
         return;
     }
 
+    WICED_BT_TRACE("bt_hs_spk_audio_streaming_stop a2dp.state=%d\n",
+                    bt_hs_spk_audio_cb.p_active_context->a2dp.state);
+
+    /* Make sure there is no A2DP streaming, HFP will use the same lite host memory */
+    bt_hs_spk_audio_local_streaming_stop();
+
     if ((bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_STARTED) ||
         (bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING))
     {
@@ -246,8 +252,6 @@ void bt_hs_spk_audio_streaming_stop(void)
          * AVRC command to pause the A2DP streaming. Otherwise, use the AVDTP Suspend
          * command to suspend the streaming. */
         bt_hs_spk_audio_streaming_pause(bt_hs_spk_audio_cb.p_active_context);
-
-        bt_hs_spk_audio_local_streaming_stop();
 
         /* Maintain State */
         bt_hs_spk_audio_cb.p_active_context->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_PAUSE_PENDING;
@@ -470,6 +474,8 @@ static void bt_hs_spk_audio_a2dp_sink_cb(wiced_bt_a2dp_sink_event_t event, wiced
  */
 static void bt_hs_spk_audio_a2dp_sink_cb_connect(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_a2dp_sink_event_data_t *p_data)
 {
+    wiced_bt_device_address_t reconnect_peer_bdaddr;
+
     WICED_BT_TRACE("A2DP Sink Connect (%d, %B, %d)\n",
                    p_data->connect.result,
                    p_data->connect.bd_addr,
@@ -503,12 +509,24 @@ static void bt_hs_spk_audio_a2dp_sink_cb_connect(bt_hs_spk_audio_context_t *p_ct
         {
             bt_hs_spk_audio_cb.p_active_context = p_ctx;
         }
+
+        /* To simply the controller QoS, enforce the IUT be the slave if
+         * IUT support multi-point. */
+        if (BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS > 1)
+        {
+            bt_hs_spk_control_bt_role_set(p_data->connect.bd_addr, HCI_ROLE_SLAVE);
+        }
     }
 
     /* Check if device is under re-connection state. */
-    if (bt_hs_spk_control_reconnect_state_get() == WICED_TRUE)
+    if (bt_hs_spk_control_reconnect_peer_bdaddr_get(reconnect_peer_bdaddr) == WICED_TRUE)
     {
-        bt_hs_spk_control_reconnect();
+        if (memcmp((void *) p_data->connect.bd_addr,
+                   (void *) reconnect_peer_bdaddr,
+                   sizeof(wiced_bt_device_address_t)) == 0)
+        {
+            bt_hs_spk_control_reconnect();
+        }
     }
 }
 
@@ -529,6 +547,7 @@ static void bt_hs_spk_audio_a2dp_sink_cb_disconnect(bt_hs_spk_audio_context_t *p
     /* Set state to IDLE. */
     p_ctx->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_IDLE;
     p_ctx->a2dp.is_streaming_started = WICED_FALSE;
+    p_ctx->a2dp.interrupted = WICED_FALSE;
 
     /* Disconnect avrcp */
     if (p_ctx->avrc.state >= REMOTE_CONTROL_CONNECTED)
@@ -573,6 +592,10 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
 
         bt_hs_spk_audio_streaming_pause(p_ctx);
 
+        /* Request to suspend this audio streaming to reduce the OTA packets
+         * (AVDTP Media packets). */
+        wiced_bt_a2dp_sink_suspend(p_data->start_ind.handle);
+
         return;
     }
 
@@ -601,6 +624,10 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
                 bt_hs_spk_audio_streaming_pause(p_ctx);
 
                 wiced_bt_a2dp_sink_streaming_stop_and_switch(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+
+                /* Request to suspend this audio streaming to reduce the OTA packets
+                 * (AVDTP Media packets). */
+                wiced_bt_a2dp_sink_suspend(p_data->start_ind.handle);
 
                 return;
             }
@@ -736,8 +763,13 @@ static void bt_hs_spk_audio_a2dp_sink_cb_suspend(bt_hs_spk_audio_context_t *p_ct
         bt_hs_spk_pm_enable();
     }
 
+#ifdef DISABLE_SNIFF_MODE_DURING_A2DP
+    /* Set ACL to sniff mode for all connections */
+    bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, NULL, NULL);
+#else
     /* Set ACL to sniff mode if the connection is in idle state. */
     bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, p_data->suspend.bd_addr, NULL);
+#endif
 
     /* Stop external codec. */
     if (bt_hs_spk_audio_cb.p_active_context == p_ctx)
@@ -1633,12 +1665,14 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
     bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_address(bd_addr, WICED_FALSE);
     uint16_t i = 0;
 
-    WICED_BT_TRACE("bt_hs_spk_audio_playstate_update (%B): %d (curState: %d), 0x%08X 0x%08X\n",
+    WICED_BT_TRACE("bt_hs_spk_audio_playstate_update (%B): %d (curState: %d), 0x%08X (%d) 0x%08X (%d)\n",
                    bd_addr,
                    played,
                    p_ctx ? p_ctx->a2dp.state : BT_HS_SPK_AUDIO_A2DP_STATE_IDLE,
                    bt_hs_spk_audio_cb.p_active_context,
-                   p_ctx);
+                   bt_hs_spk_audio_cb.p_active_context ? bt_hs_spk_audio_cb.p_active_context->a2dp.is_streaming_started : WICED_FALSE,
+                   p_ctx,
+                   p_ctx ? p_ctx->a2dp.is_streaming_started: WICED_FALSE);
 
     if (p_ctx == NULL)
     {
@@ -1663,7 +1697,7 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
             /* We expect to have a AVRC playstate change command with playing state but get a
              * paused state.
              * Do nothing here. */
-            break;
+            return;
         case BT_HS_SPK_AUDIO_A2DP_STATE_STARTED:          /* Data streaming */
             /* Peer device wants to pause the streaming. */
             /* Note: The codec shall not be stopped if there is an ongoing
@@ -1679,8 +1713,14 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
              * Note: To support multiple source device, the A2DP stream may has been already
              *       stopped while establishing the SCO connection for another device, we don't
              *       need to stop the A2DP stream again. Otherwise, the codec will be stopped. */
-            if (bt_hs_spk_handsfree_sco_connection_check(NULL) == WICED_FALSE)
+            if (bt_hs_spk_handsfree_sco_connection_check(NULL))
             {
+                if ((p_ctx->a2dp.interrupted) && (p_ctx->a2dp.is_streaming_started))
+                {
+                    /* Request to suspend this audio streaming to reduce the OTA packets
+                     * (AVDTP Media packets). */
+                    wiced_bt_a2dp_sink_suspend(p_ctx->a2dp.handle);
+                }
             }
             break;
         default:                        /* Unknown state */
@@ -1714,21 +1754,55 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                                                               0,
                                                               NULL);
 
+                       /* Check if the source is already transmitting the media packets. */
+                       if (p_ctx->a2dp.is_streaming_started)
+                       {
+                           /* Request to suspend this audio streaming to reduce the OTA packets
+                            * (AVDTP Media packets). */
+                           wiced_bt_a2dp_sink_suspend(p_ctx->a2dp.handle);
+                       }
+
                        return;
                    }
                    else
                    {
-                       /* The active context streaming is stopped but the corresponding
-                        * AVDTP SUSPEND command is not received yet.
-                        * */
-
                        /* Inform user application for the change of audio streaming source. */
                        if (bt_hs_spk_audio_cb.config.a2dp.p_streaming_source_chg_cb)
                        {
                            (*bt_hs_spk_audio_cb.config.a2dp.p_streaming_source_chg_cb)();
                        }
 
-                       wiced_bt_a2dp_sink_streaming_stop_and_switch(p_ctx->a2dp.handle);
+                       /* Check if the A2DP streaming for the active context is already suspended.
+                        * (The A2DP_SUSPEND command is received from the active context device) */
+                       if (bt_hs_spk_audio_cb.p_active_context->a2dp.is_streaming_started)
+                       {
+                           /* Audio streaming for the active context device is paused but the
+                            * A2DP SUSPEND command is not received yet. */
+                           /* Check if the A2DP streaming is already started.
+                            * If the audio streaming for this new source device is already
+                            * suspended, the local route will be set while receiving the
+                            * corresponding A2DP START command. */
+                           if (p_ctx->a2dp.is_streaming_started)
+                           {
+                               /* The Audio streaming is paused before and not suspended yet. */
+                               wiced_bt_a2dp_sink_streaming_stop_and_switch(p_ctx->a2dp.handle);
+
+                               /* Request to suspend this audio streaming in current active context
+                                * to reduce the OTA packets (AVDTP Media packets). */
+                               wiced_bt_a2dp_sink_suspend(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+                           }
+                       }
+                       else
+                       {    /* Audio streaming for the active context device is suspended. */
+                           /* Check if the A2DP streaming is already started.
+                            * If the audio streaming for this new source device is already
+                            * suspended, the local route will be set while receiving the
+                            * corresponding A2DP START command. */
+                           if (p_ctx->a2dp.is_streaming_started)
+                           {
+                               wiced_bt_a2dp_sink_streaming_start(p_ctx->a2dp.handle);
+                           }
+                       }
 
                        bt_hs_spk_audio_cb.p_active_context = p_ctx;
 
@@ -1744,7 +1818,15 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
              * pass through command sent by ourself. */
             break;
         case BT_HS_SPK_AUDIO_A2DP_STATE_STARTED:          /* Data streaming */
-            /* Do nothing. */
+            if (bt_hs_spk_audio_cb.p_active_context == p_ctx)
+            {
+                /* Check if the audio streaming is already started by the source device. */
+                if (p_ctx->a2dp.is_streaming_started == WICED_FALSE)
+                {   // audio streaming does not start yet
+                    /* Request to start this audio streaming. */
+                    wiced_bt_a2dp_sink_start(p_ctx->a2dp.handle);
+                }
+            }
             break;
         case BT_HS_SPK_AUDIO_A2DP_STATE_PAUSE_PENDING:    /* Pause initiated, intermediate state waiting on response */
             /* We expect to have a AVRC playstate change command with paused state but get a
@@ -1798,6 +1880,7 @@ static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_de
         wiced_result_t status, wiced_bt_avrc_ct_connection_state_t connection_state, uint32_t peer_features)
 {
     bt_hs_spk_audio_context_t *p_ctx = NULL;
+    wiced_bt_device_address_t reconnect_peer_bdaddr;
 
     WICED_BT_TRACE("AVRC State (%d, %B, %s, 0x%08X)\n",
                    handle,
@@ -1842,9 +1925,14 @@ static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_de
         }
 
         /* Check if device is under re-connection state. */
-        if (bt_hs_spk_control_reconnect_state_get() == WICED_TRUE)
+        if (bt_hs_spk_control_reconnect_peer_bdaddr_get(reconnect_peer_bdaddr) == WICED_TRUE)
         {
-            bt_hs_spk_control_reconnect();
+            if (memcmp((void *) remote_addr,
+                       (void *) reconnect_peer_bdaddr,
+                       sizeof(wiced_bt_device_address_t)) == 0)
+            {
+                bt_hs_spk_control_reconnect();
+            }
         }
         break;
     case REMOTE_CONTROL_CONNECTED:
@@ -1869,9 +1957,14 @@ static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_de
         }
 
         /* Check if device is under re-connection state. */
-        if (bt_hs_spk_control_reconnect_state_get() == WICED_TRUE)
+        if (bt_hs_spk_control_reconnect_peer_bdaddr_get(reconnect_peer_bdaddr) == WICED_TRUE)
         {
-            bt_hs_spk_control_reconnect();
+            if (memcmp((void *) remote_addr,
+                       (void *) reconnect_peer_bdaddr,
+                       sizeof(wiced_bt_device_address_t)) == 0)
+            {
+                bt_hs_spk_control_reconnect();
+            }
         }
         break;
     case REMOTE_CONTROL_INITIALIZED:
@@ -2632,6 +2725,57 @@ wiced_bool_t bt_hs_spk_audio_is_a2dp_streaming_started(void)
     return WICED_FALSE;
 }
 
+/**
+ * bt_hs_spk_audio_is_a2dp_streaming_interrupted
+ *
+ * Check if the a2dp streaming is interrupted.
+ *
+ * When the a2dp streaming is interrupted, the a2dp may or may not be suspended.
+ *
+ * @param[in]   bdaddr - sink device's address
+ *                       If this is set to NULL, the return value will be set to TRUE if any
+ *                       audio streaming is interrupted
+ *
+ * @return      WICED_TRUE
+ *              WICED_FALSE
+ */
+wiced_bool_t bt_hs_spk_audio_is_a2dp_streaming_interrupted(wiced_bt_device_address_t bdaddr)
+{
+    uint16_t i;
+    wiced_bool_t match;
+
+    for (i = 0 ; i < BT_HS_SPK_AUDIO_CONNECTIONS ; i++)
+    {
+        match  = WICED_FALSE;
+
+        if (bdaddr)
+        {
+            if (memcmp((void *) bt_hs_spk_audio_cb.context[i].peerBda,
+                       (void *) bdaddr,
+                       sizeof(wiced_bt_device_address_t)) == 0)
+            {
+                match = WICED_TRUE;
+            }
+        }
+
+        if ((bdaddr == NULL) ||
+            (match == WICED_TRUE))
+        {
+            if (bt_hs_spk_audio_cb.context[i].a2dp.interrupted)
+            {
+                return WICED_TRUE;
+            }
+
+            if (match == WICED_TRUE)
+            {
+                return WICED_FALSE;
+            }
+        }
+    }
+
+    return WICED_FALSE;
+}
+
 /*
  * bt_hs_spk_audio_disconnect
  *
@@ -3038,6 +3182,25 @@ void bt_hs_spk_audio_audio_context_info_get(bt_hs_spk_audio_context_info_t *p_in
     }
 
     p_info->active_audio_context_index = i;
+}
+
+/**
+ * bt_hs_spk_audio_current_streaming_addr_get
+ *
+ * Get the current active streaming address
+ */
+wiced_bool_t bt_hs_spk_audio_current_streaming_addr_get(wiced_bt_device_address_t bdaddr)
+{
+    if (bt_hs_spk_audio_cb.p_active_context == NULL)
+    {
+        return WICED_FALSE;
+    }
+
+    memcpy((void *) bdaddr,
+           (void *) bt_hs_spk_audio_cb.p_active_context->peerBda,
+           sizeof(wiced_bt_device_address_t));
+
+    return WICED_TRUE;
 }
 
 //=================================================================================================

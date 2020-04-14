@@ -159,6 +159,7 @@ typedef struct
     wiced_bt_sco_params_t               sco_params;
     uint32_t                            ag_features;        /* AG supported features. */
     uint8_t                             ag_indicator_mask;
+    wiced_bool_t                        call_hanging_up;    /* Hanging up call*/
 } handsfree_app_state_t;
 
 typedef struct bt_hs_spk_handsfree_call_session_info
@@ -363,11 +364,3 @@ void bt_hs_spk_handsfree_call_session_info_set(bt_hs_spk_handsfree_call_session_
  * @param[out] p_info
  */
 void bt_hs_spk_handsfree_call_session_info_get(bt_hs_spk_handsfree_call_session_info_t *p_info);
-
-/*
- * bt_hs_spk_handsfree_sniff_links_adjust_start
- *
- * To keep the connection of sniff links during the voice call, the sniff links
- * shall use a higher sniff attempts.
- */
-void bt_hs_spk_handsfree_sniff_links_adjust_start(wiced_bt_device_address_t bdaddr);

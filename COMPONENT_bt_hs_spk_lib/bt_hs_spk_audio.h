@@ -293,6 +293,22 @@ wiced_result_t bt_hs_spk_audio_streaming_check(wiced_bt_device_address_t bdaddr)
 wiced_bool_t bt_hs_spk_audio_is_a2dp_streaming_started(void);
 
 /**
+ * bt_hs_spk_audio_is_a2dp_streaming_interrupted
+ *
+ * Check if the a2dp streaming is interrupted.
+ *
+ * When the a2dp streaming is interrupted, the a2dp may or may not be suspended.
+ *
+ * @param[in]   bdaddr - sink device's address
+ *                       If this is set to NULL, the return value will be set to TRUE if any
+ *                       audio streaming is interrupted
+ *
+ * @return      WICED_TRUE
+ *              WICED_FALSE
+ */
+wiced_bool_t bt_hs_spk_audio_is_a2dp_streaming_interrupted(wiced_bt_device_address_t bdaddr);
+
+/**
  *
  * Volume levels passed from the application to Audio Manager should be in the range 0 to 10
  * calculating from 0 to 127 levels to 0 to 10 levels
@@ -374,6 +390,13 @@ void bt_hs_spk_audio_audio_context_info_set(bt_hs_spk_audio_context_info_t *p_in
  * @param[out] p_info
  */
 void bt_hs_spk_audio_audio_context_info_get(bt_hs_spk_audio_context_info_t *p_info);
+
+/**
+ * bt_hs_spk_audio_current_streaming_addr_get
+ *
+ * Get the current active streaming address
+ */
+wiced_bool_t bt_hs_spk_audio_current_streaming_addr_get(wiced_bt_device_address_t bdaddr);
 
 //=================================================================================================
 //  End of File (bt_hs_spk_audio.h)

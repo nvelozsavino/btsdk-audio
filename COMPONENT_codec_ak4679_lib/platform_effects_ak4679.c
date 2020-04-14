@@ -30,7 +30,7 @@
  * of such system or application assumes all risk of such use and in doing
  * so agrees to indemnify Cypress against all liability.
  */
-#include <hal/wiced_hal_i2c.h>
+#include "wiced_hal_i2c.h"
 #include "wiced_bt_trace.h"
 #include "platform_audio_effects.h"
 #include "wiced_bt_ak4679_reg_map.h"

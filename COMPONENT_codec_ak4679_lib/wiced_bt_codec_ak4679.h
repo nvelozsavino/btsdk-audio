@@ -37,7 +37,6 @@
  */
 #pragma once
 
-#include "wiced.h"
 #include "platform_audio_device.h"
 
 /**

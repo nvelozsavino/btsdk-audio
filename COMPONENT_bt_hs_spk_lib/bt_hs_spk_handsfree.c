@@ -50,7 +50,7 @@
 #include "wiced_bt_hfp_hf.h"
 #include "bt_hs_spk_pm.h"
 
-#define BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT 50  // ms
+#define BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT 500  // ms
 
 typedef void (*bt_hs_spk_handsfree_btm_event_sco_handler_t)(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
 typedef void (*bt_hs_spk_handsfree_event_handler)(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t *p_data);
@@ -88,6 +88,7 @@ static wiced_result_t bt_audio_hfp_reject_call_active_no(handsfree_app_state_t *
 static void             bt_hs_spk_handsfree_active_call_session_set(handsfree_app_state_t *p_ctx);
 static wiced_result_t   bt_hs_spk_handsfree_at_cmd_send(uint16_t handle, char *cmd, uint8_t arg_type, uint8_t arg_format, const char *p_arg, int16_t int_arg);
 static void             bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t *p_ctx);
+static void             bt_hs_spk_handsfree_call_hang_up(handsfree_app_state_t *p_ctx);
 static void             bt_hs_spk_handsfree_event_handler_ag_feature_support(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data);
 static void             bt_hs_spk_handsfree_event_handler_battery_status_ind(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data);
 static void             bt_hs_spk_handsfree_event_handler_bind(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data);
@@ -107,8 +108,6 @@ static void             bt_hs_spk_handsfree_sco_connecting_protection_timeout_cb
 static void             bt_hs_spk_handsfree_sco_management_callback_connected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
 static void             bt_hs_spk_handsfree_sco_management_callback_connection_request(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
 static void             bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
-static void             bt_hs_spk_handsfree_sniff_links_adjust_step2(wiced_bt_device_address_t bdaddr, wiced_bt_dev_power_mgmt_status_t power_mode);
-static void             bt_hs_spk_handsfree_sniff_links_adjust_step3(wiced_bt_device_address_t bdaddr, wiced_bt_dev_power_mgmt_status_t power_mode);
 
 static uint8_t  bt_hs_spk_handsfree_speaker_volume_level_get(handsfree_app_state_t *p_ctx);
 static void     bt_hs_spk_handsfree_speaker_volume_level_set(handsfree_app_state_t *p_ctx, uint8_t volume_level);
@@ -310,6 +309,8 @@ static handsfree_app_state_t *get_context_ptr_from_address(wiced_bt_device_addre
             bt_hs_spk_handsfree_cb.context[i].audio_config.mic_gain         = AM_VOL_LEVEL_HIGH - 2;
             bt_hs_spk_handsfree_cb.context[i].audio_config.bits_per_sample  = DEFAULT_BITSPSAM;
 
+            bt_hs_spk_handsfree_cb.context[i].call_hanging_up   = WICED_FALSE;
+
             return &bt_hs_spk_handsfree_cb.context[i];
         }
     }
@@ -399,16 +400,32 @@ void handsfree_hfp_init(bt_hs_spk_control_config_hfp_t *p_config, BT_HS_SPK_CONT
  */
 static void bt_hs_spk_handsfree_sco_management_callback_connection_request(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data)
 {
-    wiced_bool_t allowed = WICED_FALSE;
-    wiced_bool_t sco_protected = wiced_is_timer_in_use(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer);
+    wiced_bool_t sco_protected = WICED_FALSE;
     wiced_result_t result;
 
-    WICED_BT_TRACE("bt_hs_spk_handsfree_sco_management_callback_connection_request (%d, %d, 0x%08X 0x%08X, %d, %d)\n",
+    /* Check if SCO connecting/disconnecting protection timer is running*/
+    if (wiced_is_timer_in_use(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer))
+    {
+        sco_protected = WICED_TRUE;
+    }
+    else
+    {
+        if (bt_hs_spk_handsfree_cb.p_active_context != NULL)
+        {
+            /* Check if there is an active call, the active call will be pushed to held and remove existent SCO connection
+             * in call_notification_handler, protect it until the SCO disconnecting procedure done */
+            if (bt_hs_spk_handsfree_cb.p_active_context->call_active && bt_hs_spk_handsfree_cb.p_active_context != p_ctx)
+            {
+                sco_protected = WICED_TRUE;
+            }
+        }
+    }
+
+    WICED_BT_TRACE("bt_hs_spk_handsfree_sco_management_callback_connection_request (%d, %d, 0x%08X 0x%08X, %d)\n",
                    p_data->sco_connection_request.sco_index,
                    p_data->sco_connection_request.link_type,
                    bt_hs_spk_handsfree_cb.p_active_context,
                    p_ctx,
-                   p_ctx->call_setup,
                    sco_protected);
 
     /* Check parameter. */
@@ -426,6 +443,16 @@ static void bt_hs_spk_handsfree_sco_management_callback_connection_request(hands
     /* Check if the SCO is already in the connecting state. */
     if (sco_protected)
     {
+        return;
+    }
+
+    /* If this SCO connection is for the active call session and the active call session
+     * already has a SCO connection, reject this new SCO connection request if the
+     * requested SCO index is different from the existent SCO connection. */
+    if ((bt_hs_spk_handsfree_cb.p_active_context == p_ctx) &&
+        (bt_hs_spk_handsfree_cb.p_active_context->sco_connected) &&
+        (bt_hs_spk_handsfree_cb.p_active_context->sco_index != p_data->sco_connection_request.sco_index))
+    {
         /* Reject this connection request. */
         wiced_bt_sco_accept_connection(p_ctx->sco_index,
                                        WICED_BT_SCO_CONNECTION_REJECT_RESOURCES,
@@ -437,111 +464,56 @@ static void bt_hs_spk_handsfree_sco_management_callback_connection_request(hands
     /* Stop existent Audio Streaming if there is. */
     bt_hs_spk_audio_streaming_stop();
 
-    /* Be limited by the Controller, we can have only one active SCO or eSCO connection at the same
-     * time. Therefore, we must reject the new connection request when another SCO or eSCO
-     * connection is ongoing. */
-    /* Check the purpose of this SCO connection. */
-    switch (p_ctx->call_setup)
+    /*
+     * Note:
+     * Unless the parameter in the SCO connection request is invalid, do NOT
+     * reject the incoming SCO connection request. Otherwise, the iPhone device
+     * will NOT trigger the audio connection with the IUT anymore.
+     */
+    /* In the multi-point scenario, the sniff attempt(s) for iPhone (only one sniff attempt)
+     * may be interrupted by the ongoing SCO data due to the priority setting in the controller.
+     * That is, if one Active Call Session exists with the voice connection, the other ACL
+     * connection which is in sniff mode may loss the sniff attempts and leads to the ACL
+     * disconnection (caused by supervision timeout) or the ACL data may be lost due to the
+     * collision of sniff attempt and the SCO data.
+     * To achieve this, we need to set all the other ACL links to active mode and forbidden
+     * the sniff mode during the voice call session.
+     *
+     * Moreover, the LMP Unsniff command shall be sent before accepting the SCO connection. */
+    bt_hs_spk_control_acl_link_policy_sniff_mode_set_exclusive(p_ctx->peer_bd_addr, WICED_FALSE);
+    bt_hs_spk_control_bt_power_mode_set_exclusive(WICED_TRUE, p_ctx->peer_bd_addr, NULL);
+
+    /* Accept the SCO Connection. */
+    wiced_bt_sco_accept_connection(p_ctx->sco_index,
+                                   WICED_BT_SCO_CONNECTION_ACCEPT,
+                                   (wiced_bt_sco_params_t *) &p_ctx->sco_params);
+
+    /* Start the SCO connecting protection timer to protect this duration. */
+    result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
+                               BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
+
+    if (result != WICED_SUCCESS)
     {
-    case WICED_BT_HFP_HF_CALLSETUP_STATE_IDLE:
-        /* Check if the active call session exists. */
-        if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
-        {
-            allowed = WICED_TRUE;
-        }
-        else
-        {
-            if (bt_hs_spk_handsfree_cb.p_active_context == p_ctx)
-            {
-                allowed = WICED_TRUE;
-            }
-            else
-            {
-                /* Check if the active call session already has the voice connection. */
-                if (bt_hs_spk_handsfree_cb.p_active_context->sco_connected)
-                {
-                    /* Reject this connection request. */
-                    allowed = WICED_FALSE;
-                }
-                else
-                {
-                    /* Accept the SCO Connection. */
-                    allowed = WICED_TRUE;
-                }
-            }
-        }
-        break;
-
-    /* This SCO connection is used for the incoming call in-band ring tone. */
-    case WICED_BT_HFP_HF_CALLSETUP_STATE_INCOMING:
-        allowed = bt_hs_spk_handsfree_incoming_call_notification_handler(p_ctx);
-        break;
-
-    /* This SCO connection is used for the outgoing call in-band alert. */
-    case WICED_BT_HFP_HF_CALLSETUP_STATE_DIALING:
-    case WICED_BT_HFP_HF_CALLSETUP_STATE_ALERTING:
-        allowed = bt_hs_spk_handsfree_outgoing_call_notification_handler(p_ctx);
-        break;
-
-    case WICED_BT_HFP_HF_CALLSETUP_STATE_WAITING:
-        break;
-
-    default:
-        break;
-    }
-
-    if (allowed == WICED_TRUE)
-    {
-        /* Extra handling case. */
-        /* If this SCO connection is for the active call session and the active call session
-         * already has a SCO connection, reject this new SCO connection request if the
-         * requested SCO index is different from the existent SCO connection. */
-        if ((bt_hs_spk_handsfree_cb.p_active_context == p_ctx) &&
-            (bt_hs_spk_handsfree_cb.p_active_context->sco_connected) &&
-            (bt_hs_spk_handsfree_cb.p_active_context->sco_index != p_data->sco_connection_request.sco_index))
-        {
-            /* Reject this connection request. */
-            wiced_bt_sco_accept_connection(p_ctx->sco_index,
-                                           WICED_BT_SCO_CONNECTION_REJECT_RESOURCES,
-                                           (wiced_bt_sco_params_t *) &p_ctx->sco_params);
-        }
-        else
-        {
-            /* Accept the SCO Connection. */
-            wiced_bt_sco_accept_connection(p_ctx->sco_index,
-                                           WICED_BT_SCO_CONNECTION_ACCEPT,
-                                           (wiced_bt_sco_params_t *) &p_ctx->sco_params);
-
-            /* Start the SCO connecting protection timer to protect this duration. */
-            result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
-                                       BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
-
-            if (result != WICED_SUCCESS)
-            {
-                WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
-            }
-        }
-    }
-    else
-    {
-        /* Reject this connection request. */
-        wiced_bt_sco_accept_connection(p_ctx->sco_index,
-                                       WICED_BT_SCO_CONNECTION_REJECT_RESOURCES,
-                                       (wiced_bt_sco_params_t *) &p_ctx->sco_params);
+        WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
     }
 }
 
 static void bt_hs_spk_handsfree_sco_management_callback_connected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data)
 {
-    WICED_BT_TRACE("bt_hs_spk_handsfree_sco_management_callback_connected (%d, 0x%08X 0x%08X)\n",
+    wiced_bool_t allowed = WICED_FALSE;
+    wiced_bt_dev_status_t status;
+
+    WICED_BT_TRACE("bt_hs_spk_handsfree_sco_management_callback_connected (%d, 0x%08X 0x%08X, %d)\n",
                    p_data->sco_connected.sco_index,
                    bt_hs_spk_handsfree_cb.p_active_context,
-                   p_ctx);
+                   p_ctx,
+                   p_ctx->call_setup);
 
-    bt_hs_spk_pm_disable();
-
-    bt_hs_spk_handsfree_active_call_session_set(p_ctx);
-
+    /* Stop the SCO protection timer. */
+    if (wiced_is_timer_in_use(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer))
+    {
+        wiced_stop_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer);
+    }
 
     /* Note: Do NOT delete the following debug message.
      * This debug message is used for PTS automation. */
@@ -575,6 +547,76 @@ static void bt_hs_spk_handsfree_sco_management_callback_connected(handsfree_app_
                    bt_hs_spk_handsfree_speaker_volume_level_get(p_ctx),
                    p_ctx->mic_volume);
 
+    /*
+     * To support multi-point, we cannot reject the incoming SCO connection request due to the
+     * constraint of iPhone devices.
+     * That is, if one SCO connection exists for one phone and the 2nd SCO connection request comes
+     * from the iPhone, we have to accept it but not to handle the SCO data from the 2nd AG.
+     * We need to reject the 2nd AG's SCO connection according to the multi-point behavior
+     * defined in the development document.
+     */
+    /* Check the purpose of this SCO connection. */
+    switch (p_ctx->call_setup)
+    {
+    case WICED_BT_HFP_HF_CALLSETUP_STATE_IDLE:
+        /* Check if the active call session exists. */
+        if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
+        {
+            allowed = WICED_TRUE;
+        }
+        else
+        {
+            if (bt_hs_spk_handsfree_cb.p_active_context == p_ctx)
+            {
+                allowed = WICED_TRUE;
+            }
+            else
+            {
+                /* Check if the active call session already has the audio connection. */
+                if (bt_hs_spk_handsfree_cb.p_active_context->sco_connected)
+                {
+                    /* Terminate this audio connection. */
+                    status = wiced_bt_sco_remove(p_ctx->sco_index);
+                    WICED_BT_TRACE("wiced_bt_sco_remove (%d, %d)\n", p_ctx->sco_index, status);
+
+                    allowed = WICED_FALSE;
+                }
+                else
+                {
+                    /* Accept the SCO Connection. */
+                    allowed = WICED_TRUE;
+                }
+            }
+        }
+        break;
+
+    /* This SCO connection is used for the incoming call in-band ring tone. */
+    case WICED_BT_HFP_HF_CALLSETUP_STATE_INCOMING:
+        allowed = bt_hs_spk_handsfree_incoming_call_notification_handler(p_ctx);
+        break;
+
+    /* This SCO connection is used for the outgoing call in-band alert. */
+    case WICED_BT_HFP_HF_CALLSETUP_STATE_DIALING:
+    case WICED_BT_HFP_HF_CALLSETUP_STATE_ALERTING:
+        allowed = bt_hs_spk_handsfree_outgoing_call_notification_handler(p_ctx);
+        break;
+
+    case WICED_BT_HFP_HF_CALLSETUP_STATE_WAITING:
+        break;
+
+    default:
+        break;
+    }
+
+    if (allowed == WICED_FALSE)
+    {
+        return;
+    }
+
+    bt_hs_spk_pm_disable();
+
+    bt_hs_spk_handsfree_active_call_session_set(p_ctx);
+
     /* Configure the Audio Manager. */
     bt_hs_spk_handsfree_audio_manager_stream_start(&p_ctx->audio_config);
 
@@ -607,15 +649,6 @@ static void bt_hs_spk_handsfree_sco_management_callback_connected(handsfree_app_
      * will NOT be received in OOR reconnection scenario. We need to set to active service
      * to HFP once the SCO/eSCO connection is connected. */
     app_set_current_service(&bt_hs_spk_handsfree_cb.app_service);
-
-    /* In the multiple piconet scenario, the sniff attempt(s) for iPhone (only one sniff attempt)
-     * may be interrupted by the ongoing SCO data due to the priority setting in the controller.
-     * That is, if one Active Call Session exists with the voice connection, the other ACL
-     * connection which is in sniff mode may loss the sniff attempts and leads to the ACL
-     * disconnection (caused by supervision timeout).
-     * Therefore, we need to increase the sniffer attempts to avoid the ACL supervision timeout.
-     * To achieve this, the ACL shall be set to Active Mode first and then back to Sniff Mode. */
-    bt_hs_spk_handsfree_sniff_links_adjust_start(NULL);
 }
 
 static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data)
@@ -627,6 +660,12 @@ static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_a
                    p_data->sco_disconnected.sco_index,
                    bt_hs_spk_handsfree_cb.p_active_context,
                    p_ctx);
+
+    /* Stop the SCO protection timer. */
+    if (wiced_is_timer_in_use(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer))
+    {
+        wiced_stop_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer);
+    }
 
     if (bt_hs_spk_handsfree_cb.p_active_context == p_ctx)
     {
@@ -701,6 +740,7 @@ static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_a
             /* Establish the voice connection with the active call session. */
             bt_hs_spk_handsfree_audio_connection_establish(bt_hs_spk_handsfree_cb.p_active_context);
         }
+#if 0
         /* Recover the in-band ringtone. */
         else if (bt_hs_spk_handsfree_cb.p_active_context->call_setup >= WICED_BT_HFP_HF_CALLSETUP_STATE_INCOMING)
         {
@@ -709,6 +749,7 @@ static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_a
                 bt_hs_spk_handsfree_audio_connection_establish(bt_hs_spk_handsfree_cb.p_active_context);
             }
         }
+#endif
     }
 
     status = wiced_bt_sco_create_as_acceptor_with_specific_ag(p_ctx->peer_bd_addr,
@@ -720,8 +761,15 @@ static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_a
                    status,
                    p_ctx->sco_index);
 
-    /* Set ACL to sniff mode if the connection is in idle state. */
-    bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, p_ctx->peer_bd_addr, NULL);
+    /* Set ACL(s) to sniff mode if the connection is in idle state.
+     * Since we set all the other ACL(s) to active mode due to multi-point
+     * sniff interval collision issue, we have to set the link(s) back to sniff
+     * mode if possible. */
+    if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
+    {
+        bt_hs_spk_control_acl_link_policy_sniff_mode_set(NULL, WICED_TRUE);
+        bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, NULL, NULL);
+    }
 }
 
 /**
@@ -778,6 +826,7 @@ void hf_sco_management_callback(wiced_bt_management_evt_t event, wiced_bt_manage
 static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
     wiced_bt_dev_status_t status;
+    wiced_bt_device_address_t reconnect_peer_bdaddr;
 
     switch (p_data->conn_data.conn_state)
     {
@@ -806,6 +855,19 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
         status = wiced_bt_sco_create_as_acceptor_with_specific_ag(p_data->conn_data.remote_address,
                                                                   &p_ctx->sco_index);
         WICED_BT_TRACE("%s: %B status [%d] SCO INDEX [%d] \n", __func__, p_data->conn_data.remote_address, status, p_ctx->sco_index);
+
+        /* To simply the controller QoS, enforce the IUT be the slave if
+         * IUT support multi-point. */
+        /*
+         * We do it here to make it happen as soon as possible.
+         * If we let the Main module doing it once SLC is fully connected it may be
+         * too late because the SCO link may have been already established (Role Switch is not
+         * allowed if a SCO link is connected)
+         */
+        if (BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS > 1)
+        {
+            bt_hs_spk_control_bt_role_set(p_data->conn_data.remote_address, HCI_ROLE_SLAVE);
+        }
         break;
 
     case WICED_BT_HFP_HF_STATE_SLC_CONNECTED:
@@ -836,9 +898,14 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
     }
 
     /* Check if device is under re-connection state. */
-    if (bt_hs_spk_control_reconnect_state_get() == WICED_TRUE)
+    if (bt_hs_spk_control_reconnect_peer_bdaddr_get(reconnect_peer_bdaddr) == WICED_TRUE)
     {
-        bt_hs_spk_control_reconnect();
+        if (memcmp((void *) p_ctx->peer_bd_addr,
+                   (void *) reconnect_peer_bdaddr,
+                   sizeof(wiced_bt_device_address_t)) == 0)
+        {
+            bt_hs_spk_control_reconnect();
+        }
     }
 }
 
@@ -1050,6 +1117,16 @@ static void bt_hs_spk_handsfree_event_handler_call_setup(handsfree_app_state_t *
     if (p_data->call_data.setup_state == WICED_BT_HFP_HF_CALLSETUP_STATE_IDLE)
     {
         bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, p_ctx->peer_bd_addr, NULL);
+    }
+
+    /* Reset call hanging up mutex. */
+    if (p_ctx->call_hanging_up)
+    {
+        if ((p_ctx->call_active == WICED_FALSE) &&
+            (p_ctx->call_setup == WICED_BT_HFP_HF_CALLSETUP_STATE_IDLE))
+        {
+            p_ctx->call_hanging_up = WICED_FALSE;
+        }
     }
 }
 
@@ -1315,9 +1392,8 @@ static wiced_result_t bt_audio_hfp_reject_call_active_yes(handsfree_app_state_t 
     case WICED_BT_HFP_HF_CALLSETUP_STATE_DIALING:  /* Outgoing call is being setup up */
     case WICED_BT_HFP_HF_CALLSETUP_STATE_ALERTING: /* Remote party is being alterted of the call */
         /* Terminate/Cancel the outgoing call. */
-        return wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                   WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                   NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
+        break;
 
     case WICED_BT_HFP_HF_CALLSETUP_STATE_WAITING:  /* Incoming call is waiting (received when a call is already active) */
     default:
@@ -1344,16 +1420,14 @@ static wiced_result_t bt_audio_hfp_reject_call_active_no(handsfree_app_state_t *
 
     case WICED_BT_HFP_HF_CALLSETUP_STATE_INCOMING: /* There is an incoming call */
         /* Reject the incoming call. */
-        return wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                   WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                   NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
+        break;
 
     case WICED_BT_HFP_HF_CALLSETUP_STATE_DIALING:  /* Outgoing call is being setup up */
     case WICED_BT_HFP_HF_CALLSETUP_STATE_ALERTING: /* Remote party is being alterted of the call */
         /* Terminate/Cancel the outgoing call. */
-        return wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                   WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                   NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
+        break;
 
     case WICED_BT_HFP_HF_CALLSETUP_STATE_WAITING:  /* Incoming call is waiting (received when a call is already active) */
     default:
@@ -1401,9 +1475,7 @@ static wiced_result_t bt_audio_hfp_accept_hangup_call_active_yes(handsfree_app_s
             if (p_ctx->sco_connected == WICED_TRUE)
             {   // A SCO/eSCO connection exists.
                 /* Hang up the call. */
-                return wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                           WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                           NULL);
+                bt_hs_spk_handsfree_call_hang_up(p_ctx);
             }
             else
             {   // There is no existent SCO/eSCO connection.
@@ -2419,6 +2491,8 @@ static void bt_hs_spk_handsfree_speaker_volume_level_set(handsfree_app_state_t *
  */
 static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(handsfree_app_state_t *p_ctx)
 {
+    wiced_result_t result;
+
     /* Check if active call session exists. */
     if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
     {
@@ -2449,9 +2523,7 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
                 /* The active call session is doing the Three-Way Calls operation now.
                  * It is supposed that the 3-way call shall not to be interrupted.
                  * Therefore, terminate this outgoing call. */
-                wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                    WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                    NULL);
+                bt_hs_spk_handsfree_call_hang_up(p_ctx);
 
                 return WICED_FALSE;
             }
@@ -2471,6 +2543,16 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
         /* Due to current firmware constraint, the headset can have only one
          * active SCO/eSCO connection at the same time.
          * Hence, temporarily disconnect the active SCO/eSCO connection. */
+
+        /* Start the SCO connecting/disconnecting protection timer to protect this duration. */
+        result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
+                               BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
+
+        if (result != WICED_SUCCESS)
+        {
+            WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
+        }
+
         wiced_bt_sco_remove(bt_hs_spk_handsfree_cb.p_active_context->sco_index);
 
         return WICED_TRUE;
@@ -2482,6 +2564,16 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
         /* Due to current firmware constraint, the headset can have only one
          * active SCO/eSCO connection at the same time.
          * Hence, temporarily disconnect the active SCO/eSCO connection. */
+
+        /* Start the SCO connecting/disconnecting protection timer to protect this duration. */
+        result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
+                               BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
+
+        if (result != WICED_SUCCESS)
+        {
+            WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
+        }
+
         wiced_bt_sco_remove(bt_hs_spk_handsfree_cb.p_active_context->sco_index);
 
         return WICED_TRUE;
@@ -2491,9 +2583,7 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
     if (bt_hs_spk_handsfree_cb.p_active_context->call_setup == WICED_BT_HFP_HF_CALLSETUP_STATE_INCOMING)
     {
        /* Terminate this new outgoing call. */
-       wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                           WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                           NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
 
        return WICED_FALSE;
     }
@@ -2510,9 +2600,7 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
          * It has a great possibility that the LMP Remove eSCO Link command will be sent out
          * later than receiving the LMP eSCO Link request from the calling device.
          * Therefore, We need to terminate the new calling. */
-        wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                            WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                            NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
 
         return WICED_FALSE;
     }
@@ -2530,6 +2618,8 @@ static wiced_bool_t bt_hs_spk_handsfree_outgoing_call_notification_handler(hands
  */
 static wiced_bool_t bt_hs_spk_handsfree_incoming_call_notification_handler(handsfree_app_state_t *p_ctx)
 {
+    wiced_result_t result;
+
     /* Check if the active call session exists. */
     if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
     {
@@ -2557,9 +2647,7 @@ static wiced_bool_t bt_hs_spk_handsfree_incoming_call_notification_handler(hands
             /* The active call session is doing the Three-Way Calls operation now.
              * It is supposed that the 3-way calling shall not to be interrupted.
              * Therefore, reject this incoming call from another AG. */
-            wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                                WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                                NULL);
+            bt_hs_spk_handsfree_call_hang_up(p_ctx);
 
             return WICED_FALSE;
         }
@@ -2572,6 +2660,16 @@ static wiced_bool_t bt_hs_spk_handsfree_incoming_call_notification_handler(hands
         /* Due to current firmware constraint, the headset can have only one
          * active SCO/eSCO connection at the same time.
          * Hence, temporarily disconnect the active SCO/eSCO connection. */
+
+        /* Start the SCO connecting/disconnecting protection timer to protect this duration. */
+        result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
+                               BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
+
+        if (result != WICED_SUCCESS)
+        {
+            WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
+        }
+
         wiced_bt_sco_remove(bt_hs_spk_handsfree_cb.p_active_context->sco_index);
 
         return WICED_TRUE;
@@ -2583,6 +2681,16 @@ static wiced_bool_t bt_hs_spk_handsfree_incoming_call_notification_handler(hands
         /* Due to current firmware constraint, the headset can have only one
          * active SCO/eSCO connection at the same time.
          * Hence, temporarily disconnect the active SCO/eSCO connection. */
+
+        /* Start the SCO connecting/disconnecting protection timer to protect this duration. */
+        result = wiced_start_timer(&bt_hs_spk_handsfree_cb.sco_connecting_protection_timer,
+                               BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT);
+
+        if (result != WICED_SUCCESS)
+        {
+            WICED_BT_TRACE("Error fail to start the SCO connecting protection timer (%d)\n", result);
+        }
+
         wiced_bt_sco_remove(bt_hs_spk_handsfree_cb.p_active_context->sco_index);
 
         return WICED_TRUE;
@@ -2593,9 +2701,7 @@ static wiced_bool_t bt_hs_spk_handsfree_incoming_call_notification_handler(hands
     {
         /* No matter this active call session has an incoming call or is doing outgoing call,
          * reject this incoming call from another AG. */
-        wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
-                                            WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
-                                            NULL);
+        bt_hs_spk_handsfree_call_hang_up(p_ctx);
 
         return WICED_FALSE;
     }
@@ -2624,6 +2730,13 @@ static void bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t
 {
     wiced_bt_dev_status_t status;
     wiced_result_t result;
+
+    WICED_BT_TRACE("bt_hs_spk_handsfree_audio_connection_establish (%B, %d)\n", p_ctx->peer_bd_addr, p_ctx->sco_connected);
+
+    if (p_ctx->sco_connected)
+    {
+        return;
+    }
 
     if (p_ctx->sco_params.use_wbs == WICED_TRUE)
     {
@@ -2665,37 +2778,31 @@ static void bt_hs_spk_handsfree_sco_connecting_protection_timeout_cb(uint32_t ar
 }
 
 /*
- * bt_hs_spk_handsfree_sniff_links_adjust_start
+ * bt_hs_spk_handsfree_call_hang_up
  *
- * To keep the connection of sniff links during the voice call, the sniff links
- * shall use a higher sniff attempts.
+ * Hang up the active call, reject the incoming call, or terminate the outgoing call.
  */
-void bt_hs_spk_handsfree_sniff_links_adjust_start(wiced_bt_device_address_t bdaddr)
+static void bt_hs_spk_handsfree_call_hang_up(handsfree_app_state_t *p_ctx)
 {
-    WICED_BT_TRACE("bt_hs_spk_handsfree_sniff_links_adjust_start\n");
-
-    bt_hs_spk_control_bt_power_mode_set(WICED_TRUE, bdaddr, bt_hs_spk_handsfree_sniff_links_adjust_step2);
-}
-
-/*
- * bt_hs_spk_handsfree_sniff_links_adjust_step2
- *
- */
-static void bt_hs_spk_handsfree_sniff_links_adjust_step2(wiced_bt_device_address_t bdaddr, wiced_bt_dev_power_mgmt_status_t power_mode)
-{
-    WICED_BT_TRACE("bt_hs_spk_handsfree_sniff_links_adjust_step2 (%B, %d)\n", bdaddr, power_mode);
-
-    if (power_mode == WICED_POWER_STATE_ACTIVE)
+    /* Check parameter. */
+    if (p_ctx == NULL)
     {
-        bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, bdaddr, bt_hs_spk_handsfree_sniff_links_adjust_step3);
+        return;
     }
-}
 
-/*
- * bt_hs_spk_handsfree_sniff_links_adjust_step3
- *
- */
-static void bt_hs_spk_handsfree_sniff_links_adjust_step3(wiced_bt_device_address_t bdaddr, wiced_bt_dev_power_mgmt_status_t power_mode)
-{
-    WICED_BT_TRACE("bt_hs_spk_handsfree_sniff_links_adjust_step3 (%B, %d)\n", bdaddr, power_mode);
+    /* Check state do avoid sending duplicate AT+CHUP commands to the AG.
+     * Some AG may replies the +CME:0 command to indicates the AG error if
+     * receiving duplicate AT+CHUP command. */
+    if (p_ctx->call_hanging_up)
+    {
+        WICED_BT_TRACE("Err: already hanging up %B\n", p_ctx->peer_bd_addr);
+        return;
+    }
+
+    if (wiced_bt_hfp_hf_perform_call_action(p_ctx->rfcomm_handle,
+                                            WICED_BT_HFP_HF_CALL_ACTION_HANGUP,
+                                            NULL) == WICED_SUCCESS)
+    {
+        p_ctx->call_hanging_up = WICED_TRUE;
+    }
 }
