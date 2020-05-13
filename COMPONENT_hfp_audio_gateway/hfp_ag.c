@@ -48,13 +48,6 @@ uint32_t                    ag_features;
 hfp_ag_session_cb_t         *ag_p_scb = NULL;
 uint8_t                     ag_num_scb;
 
-/*****************************************************************************
- **  Constants
- *****************************************************************************/
-
-/* global constant for "any" bd addr */
-BD_ADDR bd_addr_any  = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-BD_ADDR bd_addr_null = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 /******************************************************
  *               Function Definitions

@@ -81,20 +81,21 @@ static gpio_button_state_change_callback_t button_state_change_callback;
 
 wiced_result_t gpio_button_init( const gpio_button_t* button )
 {
-	if(button == NULL)
-		return WICED_BADARG;
-	wiced_hal_gpio_configure_pin((uint32_t)button->gpio, (uint32_t)GPIO_INPUT_ENABLE,
-			(uint32_t)(( button->polarity == WICED_ACTIVE_HIGH )? INPUT_PULL_UP: INPUT_PULL_DOWN));
+    if(button == NULL)
+        return WICED_BADARG;
+
+    wiced_hal_gpio_configure_pin((uint32_t)button->gpio, (uint32_t)GPIO_INPUT_ENABLE,
+            (uint32_t)(( button->polarity == WICED_ACTIVE_HIGH )? INPUT_PULL_UP: INPUT_PULL_DOWN));
 
     return WICED_SUCCESS;
 }
 
 wiced_result_t gpio_button_deinit( const gpio_button_t* button )
 {
-	if(button == NULL)
-		return WICED_BADARG;
-	wiced_hal_gpio_configure_pin((uint32_t)button->gpio, (uint32_t)(GPIO_INPUT_DISABLE|GPIO_INTERRUPT_DISABLE),
-			(uint32_t)(INPUT_PULL_DOWN));
+    if(button == NULL)
+        return WICED_BADARG;
+    wiced_hal_gpio_configure_pin((uint32_t)button->gpio, (uint32_t)(GPIO_INPUT_DISABLE|GPIO_INTERRUPT_DISABLE),
+            (uint32_t)(INPUT_PULL_DOWN));
 
     return WICED_SUCCESS;
 
@@ -116,8 +117,8 @@ wiced_result_t gpio_button_enable( const gpio_button_t* button )
 {
     wiced_gpio_irq_trigger_t trigger;
 
-	if(button == NULL)
-		return WICED_BADARG;
+    if(button == NULL)
+        return WICED_BADARG;
 
     if ( button->trigger == 0 )
     {
@@ -129,10 +130,10 @@ wiced_result_t gpio_button_enable( const gpio_button_t* button )
     }
 
     wiced_hal_gpio_configure_pin( (uint32_t)button->gpio, (uint32_t)trigger,
-		(uint32_t)(( button->polarity == WICED_ACTIVE_HIGH )? INPUT_PULL_UP: INPUT_PULL_DOWN));
+            (uint32_t)(( button->polarity == WICED_ACTIVE_HIGH )? INPUT_PULL_UP: INPUT_PULL_DOWN));
 
     wiced_hal_gpio_register_pin_for_interrupt((uint16_t) button->gpio,
-		gpio_button_interrupt_handler, (void*)button);
+            gpio_button_interrupt_handler, (void*)button);
 
     return WICED_SUCCESS;
 }

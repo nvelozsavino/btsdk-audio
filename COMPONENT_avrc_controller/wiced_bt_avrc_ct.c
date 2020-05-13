@@ -44,6 +44,7 @@
 #ifndef CYW20706A2
 #include "bt_target.h"
 #endif
+#include "wiced_bt_utils.h"
 
 #define CASE_RETURN_STR(const) case const: return #const;
 
@@ -108,9 +109,6 @@ typedef enum {
     PASS_CMD_FORWARD = 0x4B,
     PASS_CMD_BACKWARD = 0x4C,
 } btrcc_pass_cmd;
-
-/* global constant for "any" bd addr */
-wiced_bt_device_address_t bd_addr_any0 = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 #define isValidPassThruComd(x) (((x) >= PASS_CMD_PLAY) && ((x) <= PASS_CMD_BACKWARD))
 
@@ -381,7 +379,6 @@ static uint16_t wiced_bt_avrc_ct_find_service(uint16_t service_uuid, wiced_bt_de
 void wiced_bt_avrc_msg_cback (uint8_t handle, uint8_t label, uint8_t opcode, wiced_bt_avrc_msg_t *p_msg);
 
 extern void AVCT_Register(uint16_t mtu, uint16_t mtu_br, uint8_t sec_mask);
-void bdcpy(wiced_bt_device_address_t a, const wiced_bt_device_address_t b);
 
 static void wiced_bt_avrc_ct_rcc_display(void);
 
@@ -530,7 +527,7 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
             prcc_dev->state = RCC_STATE_CONNECTED;
             prcc_dev->rc_handle = handle;
 
-            bdcpy( prcc_dev->peer_bda, peer_addr );
+            utl_bdcpy( prcc_dev->peer_bda, peer_addr );
             if( rcc_cb.flags & RCC_FLAG_RC_API_OPEN_PENDING )
             {
                 rcc_cb.flags &= ~RCC_FLAG_RC_API_OPEN_PENDING;
@@ -591,7 +588,7 @@ void wiced_bt_avrc_ctrl_cback ( uint8_t handle, uint8_t event, uint16_t result, 
                     {
                         wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[i],
                                                          AVRC_CONN_ACCEPTOR,
-                                                         bd_addr_any0,
+                                                         bd_addr_any,
                                                          rcc_cb.local_features);
 
                         prcc_dev->role = AVRC_CONN_ACCEPTOR;
@@ -659,50 +656,6 @@ void wiced_bt_avrc_msg_cback (uint8_t handle, uint8_t label, uint8_t opcode, wic
  *                      Internal Functions
  *
  *******************************************************************************/
-
-/*******************************************************************************
-**
-** Function         bdcpy
-**
-** Description      Copy bd addr b to a.
-**
-**
-** Returns          void
-**
-*******************************************************************************/
-void bdcpy(wiced_bt_device_address_t a, const wiced_bt_device_address_t b)
-{
-    int i;
-
-    for( i = BD_ADDR_LEN; i != 0; i-- )
-    {
-        *a++ = *b++;
-    }
-}
-
-/*******************************************************************************
-**
-** Function         bdcmp
-**
-** Description      Compare bd addr b to a.
-**
-**
-** Returns          Zero if b==a, nonzero otherwise (like memcmp).
-**
-*******************************************************************************/
-int bdcmp(const wiced_bt_device_address_t a, const wiced_bt_device_address_t b)
-{
-    int i;
-
-    for( i = BD_ADDR_LEN; i != 0; i-- )
-    {
-        if( *a++ != *b++ )
-        {
-            return -1;
-        }
-    }
-    return 0;
-}
 
 /*******************************************************************************
 **
@@ -952,7 +905,7 @@ void wiced_bt_avrc_ct_start_discovery(wiced_bt_device_address_t peer_addr)
                                                         wiced_bt_avrc_ct_sdp_cback ) == 0 )
             {
                 rcc_cb.flags |= RCC_FLAG_DISC_CB_IN_USE;
-                bdcpy( rcc_cb.sdb_bd_addr, peer_addr );
+                utl_bdcpy( rcc_cb.sdb_bd_addr, peer_addr );
                 WICED_BTAVRCP_TRACE ( "%s started\n", __FUNCTION__  );
             }
             else
@@ -1075,7 +1028,7 @@ static void wiced_bt_avrc_ct_sdp_cback( uint16_t status )
             {
                 wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[i],
                                                  AVRC_CONN_ACCEPTOR,
-                                                 bd_addr_any0,
+                                                 bd_addr_any,
                                                  rcc_cb.local_features | RCC_FEAT_METADATA | RCC_FEAT_VENDOR);
                 break;
             }
@@ -1538,6 +1491,7 @@ void wiced_bt_avrc_ct_handle_msg(uint8_t handle, uint8_t label, uint8_t opcode, 
     /* else if this is a vendor specific command or response */
     else if( opcode == AVRC_OP_VENDOR )
     {
+#if( AVRC_METADATA_INCLUDED == TRUE )
         BE_STREAM_TO_UINT8  (pdu_id, p_in);
         if (AVRC_PDU_REGISTER_NOTIFICATION == pdu_id)
         {
@@ -1599,6 +1553,7 @@ void wiced_bt_avrc_ct_handle_msg(uint8_t handle, uint8_t label, uint8_t opcode, 
                 wiced_bt_avrc_vendor_rsp(handle,label,&p_msg->vendor);
             }
         }
+#endif
     }
 #if( AVCT_BROWSE_INCLUDED == TRUE )
     else if( opcode == AVRC_OP_BROWSE )
@@ -2336,7 +2291,7 @@ wiced_result_t wiced_bt_avrc_ct_init(uint32_t local_features,
         {
             wiced_bt_avrc_ct_connection_open(&rcc_cb.rc_acp_handle[dev_indx],
                                              AVRC_CONN_ACCEPTOR,
-                                             bd_addr_any0,
+                                             bd_addr_any,
                                              local_features | RCC_FEAT_METADATA | RCC_FEAT_VENDOR);
         }
     }

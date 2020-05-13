@@ -86,14 +86,14 @@ typedef enum
 /*****************************************************************************
 **  Structures
 *****************************************************************************/
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bt_device_address_t   bdaddr;
     wiced_bool_t                connected;
     uint8_t                     reason;     // disconnection reason
     uint8_t                     last_disconnection_reason;
 
-    struct __attribute__((packed))
+    struct
     {
         wiced_bt_dev_power_mgmt_status_t        power_mode;
         uint16_t                                sniff_interval;
@@ -102,7 +102,7 @@ typedef struct __attribute__((packed))
     } acl;
 } bt_hs_spk_control_connection_status_br_edr_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     BT_HS_SPK_CONTROL_CONN_STATUS_CHANGE_CB         pre_handler;
 
@@ -116,30 +116,30 @@ typedef struct __attribute__((packed))
     } le;
 } bt_hs_spk_control_connection_status_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bool_t                        connecting;
     uint16_t                            idx;
 
-    struct __attribute__((packed))
+    struct
     {
         uint8_t                             reason;
         wiced_bt_device_address_t           bdaddr;
         BT_HS_SPK_CONTROL_RECONNECT_STATE_t state;
 
-        struct __attribute__((packed))
+        struct
         {
             wiced_bool_t            connecting;
             wiced_bool_t            connected;
         } hfp;
 
-        struct __attribute__((packed))
+        struct
         {
             wiced_bool_t            connecting;
             wiced_bool_t            connected;
         } a2dp;
 
-        struct __attribute__((packed))
+        struct
         {
             wiced_bool_t            connecting;
             wiced_bool_t            connected;
@@ -147,7 +147,7 @@ typedef struct __attribute__((packed))
     } info[BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS];
 } bt_hs_spk_control_reconnect_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bt_device_link_keys_t                 linkey[BT_HS_SPK_CONTROL_LINK_KEY_COUNT];
     bt_hs_spk_control_connection_status_t       conn_status;    // connection status
@@ -174,22 +174,6 @@ hci_control_cb_t  hci_control_cb = {0};
 
 static wiced_app_service_t*  current_service;
 
-const wiced_transport_cfg_t transport_cfg =
-{
-    .type = WICED_TRANSPORT_UART,
-    .cfg.uart_cfg = {
-        .mode = WICED_TRANSPORT_UART_HCI_MODE,
-        .baud_rate = HCI_UART_MAX_BAUD,
-    },
-    .rx_buff_pool_cfg = {
-        .buffer_size = 0,
-        .buffer_count = 0,
-    },
-    .p_status_handler = NULL,
-    .p_data_handler = NULL,
-    .p_tx_complete_cback = NULL,
-};
-
 static bt_hs_spk_control_cb_t bt_hs_spk_control_cb = {0};
 
 static BT_HS_SPK_BLE_DISCOVERABILITY_CHANGE_CB *p_bt_hs_spk_ble_discoverability_change_cb = NULL;
@@ -207,7 +191,6 @@ static void         bt_hs_spk_control_reconnect_power_failure(void);
 static void         bt_hs_spk_control_reconnect_timeout_callback(uint32_t param);
 
 extern wiced_result_t   BTM_SetPacketTypes (wiced_bt_device_address_t remote_bda, UINT16 pkt_types);
-extern wiced_result_t   BTM_SetLinkPolicy(wiced_bt_device_address_t remote_bd_addr, uint16_t *p_policy);
 
 /******************************************************
  *               Function Definitions
@@ -700,6 +683,7 @@ wiced_result_t bt_hs_spk_post_stack_init(bt_hs_spk_control_config_t *p_config)
     wiced_am_init();
 
     /* Open and Close the Codec now (Boot time) to prevent DSP download delay later */
+#ifdef DSP_BOOT_RAMDOWNLOAD
     stream_id = wiced_am_stream_open(A2DP_PLAYBACK);
     if (stream_id == WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
     {
@@ -712,6 +696,7 @@ wiced_result_t bt_hs_spk_post_stack_init(bt_hs_spk_control_config_t *p_config)
             WICED_BT_TRACE("Err: wiced_am_stream_close\n");
         }
     }
+#endif
 
     /* Init. Audio Module. */
     result = bt_hs_spk_audio_init(&p_config->audio,
@@ -2355,9 +2340,9 @@ void bt_hs_spk_control_acl_link_policy_set(wiced_bt_device_address_t bdaddr, uin
     /* Set the new link policy */
     new_link_policy = link_policy;
 
-    status = BTM_SetLinkPolicy(bdaddr, &new_link_policy);
+    status = wiced_bt_dev_set_link_policy(bdaddr, &new_link_policy);
 
-    WICED_BT_TRACE("BTM_SetLinkPolicy(%B, 0x%04X, %d)\n", bdaddr, link_policy, status);
+    WICED_BT_TRACE("SetLinkPolicy(%B, 0x%04X, %d)\n", bdaddr, link_policy, status);
 
     if ((status != WICED_BT_SUCCESS) &&
         (status != WICED_BT_PENDING))

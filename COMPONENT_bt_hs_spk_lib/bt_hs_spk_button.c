@@ -290,6 +290,7 @@ void bt_hs_spk_button_set_discovery(wiced_bool_t enable)
     }
 }
 
+
 wiced_result_t service_bt_discovery(void)
 {
     wiced_result_t result = WICED_ERROR;
@@ -647,18 +648,4 @@ void bt_hs_spk_button_lrac_switch_restore_visibility(wiced_bool_t dissoverable, 
             WICED_BT_TRACE("%s timer start failed\n",__func__);
     }
 #endif
-}
-
-void bt_hs_spk_button_check_disable_pairing(void)
-{
-    /* check discover-able disable or not */
-    if (bt_hs_spk_control_connection_status_check_be_edr(WICED_TRUE) == WICED_TRUE)
-    {
-        /* stop timer */
-        if (wiced_is_timer_in_use(&bt_service_timer))
-        {
-            wiced_stop_timer(&bt_service_timer);
-        }
-        bt_hs_spk_control_handle_set_pairability(WICED_FALSE);
-    }
 }

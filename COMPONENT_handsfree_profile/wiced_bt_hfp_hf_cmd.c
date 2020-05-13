@@ -41,8 +41,7 @@
 #include "wiced_bt_trace.h"
 #include "wiced_bt_hfp_hf.h"
 #include "wiced_bt_hfp_hf_int.h"
-
-extern char *utl_strcpy( char *p_dst, char *p_src );
+#include "wiced_bt_utils.h"
 
 /******************************************************
  * Indicator Enumerations
@@ -269,7 +268,7 @@ void wiced_bt_hfp_hf_at_send_cmd(wiced_bt_hfp_hf_scb_t *p_scb, uint8_t cmd,
     /* copy argument if any */
     if (arg_format == WICED_BT_HFP_HF_AT_FMT_INT)
     {
-        p += wiced_bt_hfp_hf_utils_itoa((uint16_t) int_arg, p);
+        p += utl_itoa((uint16_t) int_arg, p);
     }
     else if (arg_format == WICED_BT_HFP_HF_AT_FMT_STR)
     {
@@ -992,33 +991,33 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
             }
             else
             {
-                result = (uint8_t) wiced_bt_hfp_hf_utils_str2int(p_arg);
+                result = (uint8_t) utl_str2int(p_arg);
                 app_data.error_code = (uint8_t)result;
             }
             break;
         case WICED_BT_HFP_HF_RES_VGM:
-            result = (uint8_t) wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t) utl_str2int(p_arg);
             p_scb->mic_volume = (uint8_t)result;
             app_data.volume.level = p_scb->mic_volume;
             wiced_bt_hfp_hf_cb.config_data.mic_volume = p_scb->mic_volume;
             app_data.volume.type = WICED_BT_HFP_HF_MIC;
             break;
         case WICED_BT_HFP_HF_RES_VGS:
-            result = (uint8_t) wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t) utl_str2int(p_arg);
             p_scb->speaker_volume = (uint8_t)result;
             app_data.volume.level = p_scb->speaker_volume;
             wiced_bt_hfp_hf_cb.config_data.speaker_volume = p_scb->speaker_volume;
             app_data.volume.type = WICED_BT_HFP_HF_SPEAKER;
             break;
         case WICED_BT_HFP_HF_RES_VGM_EQ:
-            result = (uint8_t)wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t)utl_str2int(p_arg);
             p_scb->mic_volume = (uint8_t)result;
             app_data.volume.level = p_scb->mic_volume;
             wiced_bt_hfp_hf_cb.config_data.mic_volume = p_scb->mic_volume;
             app_data.volume.type = WICED_BT_HFP_HF_MIC;
             break;
         case WICED_BT_HFP_HF_RES_VGS_EQ:
-            result = (uint8_t)wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t)utl_str2int(p_arg);
             p_scb->speaker_volume = (uint8_t)result;
             app_data.volume.level = p_scb->speaker_volume;
             wiced_bt_hfp_hf_cb.config_data.speaker_volume = p_scb->speaker_volume;
@@ -1041,7 +1040,7 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
                 for (;i<strlen(p_arg);i++,j++)
                     token[j]=p_arg[i];
                 token[j] = '\0';
-                app_data.clip.type = (uint8_t) wiced_bt_hfp_hf_utils_str2int(token);
+                app_data.clip.type = (uint8_t) utl_str2int(token);
             }
 
             break;
@@ -1080,7 +1079,7 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
                        token[j++] = p_arg[i];
                    }
                    token[j++] = '\0';
-                   app_data.active_call.type = (uint8_t)wiced_bt_hfp_hf_utils_str2int(token);
+                   app_data.active_call.type = (uint8_t)utl_str2int(token);
                }
             }
             break;
@@ -1118,11 +1117,11 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
         case WICED_BT_HFP_HF_RES_BVRA_EQ:
         case WICED_BT_HFP_HF_RES_BSIR:
         case WICED_BT_HFP_HF_RES_BTRH:
-            result = (uint8_t)wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t)utl_str2int(p_arg);
             break;
 #if (WICED_BT_HFP_HF_WBS_INCLUDED == TRUE )
         case WICED_BT_HFP_HF_RES_BCS:
-            result = (uint8_t)wiced_bt_hfp_hf_utils_str2int(p_arg);
+            result = (uint8_t)utl_str2int(p_arg);
             app_data.selected_codec = result;
             // Send AT+BCS=<Codec ID> to AG
             wiced_bt_hfp_hf_at_send_cmd( p_scb, WICED_BT_HFP_HF_CMD_BCS,
@@ -1136,7 +1135,7 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
                 (p_scb->peer_feature_mask & WICED_BT_HFP_AG_FEATURE_VOICE_RECOGNITION_ACTIVATION))
             {
                 /* Extract Voice Recognition state and send it to application */
-                result = (uint8_t)wiced_bt_hfp_hf_utils_str2int(p_arg);
+                result = (uint8_t)utl_str2int(p_arg);
                 app_data.voice_recognition = (uint8_t)result;
             }
             else
@@ -1147,7 +1146,7 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
             break;
 
         case WICED_BT_HFP_HF_RES_BRSF:
-            p_scb->peer_feature_mask = wiced_bt_hfp_hf_utils_str2int(p_arg);
+            p_scb->peer_feature_mask = utl_str2int(p_arg);
             WICED_BTHFP_TRACE("%s: peer_feature_mask: %d", __FUNCTION__,
                 p_scb->peer_feature_mask);
             app_data.ag_feature_flags = p_scb->peer_feature_mask;

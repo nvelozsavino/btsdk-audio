@@ -45,6 +45,7 @@
 #if defined(CYW20719B1) || defined(CYW20721B1) || defined(CYW20721B2) || defined(CYW43012C0) || defined(CYW20706A2)
 #include "wiced_bt_event.h"
 #endif
+#include "wiced_bt_utils.h"
 
 /*****************************************************************************
 ** Global data
@@ -150,7 +151,7 @@ wiced_bt_hfp_hf_scb_t *wiced_bt_hfp_hf_get_scb_by_bd_addr(
     for(i=0; i<WICED_BT_HFP_HF_MAX_CONN; i++)
     {
         if(wiced_bt_hfp_hf_cb.scb[i].in_use == TRUE &&
-            !wiced_bt_hfp_hf_utils_bdcmp(wiced_bt_hfp_hf_cb.scb[i].peer_addr, bd_addr))
+            !utl_bdcmp(wiced_bt_hfp_hf_cb.scb[i].peer_addr, bd_addr))
         {
             p_scb = &wiced_bt_hfp_hf_cb.scb[i];
             break;
@@ -294,7 +295,6 @@ wiced_bool_t wiced_bt_hfp_open_rfcomm_server_port()
 ** Description      Allocate stream control block and registers the service to stack
 ** Returns          wiced_result_t
 *******************************************************************************/
-BD_ADDR bd_addr_any  = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 wiced_result_t wiced_bt_hfp_hf_register(uint8_t scn, uint16_t uuid)
 {
     wiced_bt_rfcomm_result_t res = WICED_BT_RFCOMM_SUCCESS;
@@ -349,7 +349,7 @@ static wiced_bt_hfp_hf_scb_t *wiced_bt_hfp_hf_get_scb(uint16_t event,
         p_scb = wiced_bt_hfp_hf_scb_alloc();
         if(p_scb != NULL)
         {
-            wiced_bt_hfp_hf_utils_bdcpy(p_scb->peer_addr, p_data->api_data.bd_address);
+            utl_bdcpy(p_scb->peer_addr, p_data->api_data.bd_address);
         }
         break;
     case WICED_BT_HFP_HF_API_DISCONNECT_EVT:

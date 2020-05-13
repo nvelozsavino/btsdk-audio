@@ -85,6 +85,7 @@ typedef union
 typedef void (i2s_aud_inject_callback_t)(i2s_aud_inject_event_t event,
         i2s_aud_inject_event_data_t *p_data);
 
+#ifdef CYW20721B2
 /*
  * i2s_aud_inject_init
  */
@@ -93,4 +94,9 @@ wiced_result_t i2s_aud_inject_init(i2s_aud_inject_callback_t *p_callback);
 /*
  * i2s_aud_inject_enableI2SAudioInject
  */
- wiced_result_t i2s_aud_inject_enableI2SAudioInject(uint8_t enable, uint32_t *sampleRate);
+
+wiced_result_t i2s_aud_inject_enableI2SAudioInject(uint8_t enable, uint32_t *sampleRate);
+#else
+#define i2s_aud_inject_init(a)                      WICED_BT_ERROR
+#define i2s_aud_inject_enableI2SAudioInject(a,b)    WICED_BT_ERROR
+#endif

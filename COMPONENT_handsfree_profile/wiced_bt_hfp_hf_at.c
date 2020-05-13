@@ -166,7 +166,7 @@ wiced_bool_t wiced_bt_hfp_hf_at_parse(wiced_bt_hfp_hf_at_cb_t *p_cb,
                     /* Loop through at command table looking for match */
                     for (idx = 0; wiced_bt_hfp_hf_res[idx].p_res[0] != 0; idx++)
                     {
-                        if (!wiced_bt_hfp_hf_utils_strucmp(wiced_bt_hfp_hf_res[idx].p_res,
+                        if (!utl_strucmp(wiced_bt_hfp_hf_res[idx].p_res,
                                 p_cb->p_res_buf))
                         {
                             p_arg = p_cb->p_res_buf + strlen(wiced_bt_hfp_hf_res[idx].p_res);

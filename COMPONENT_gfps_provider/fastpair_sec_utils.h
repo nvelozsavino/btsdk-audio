@@ -30,39 +30,16 @@
  * of such system or application assumes all risk of such use and in doing
  * so agrees to indemnify Cypress against all liability.
  */
-
 /** @file
- *
- * This file implements the utility functions for handsfree
- */
+*
+* Google Fast Pair header file
+*
+* This file provides definitions and function prototypes for security functions (AES, SHA256, ECC)
+*
+*/
+#pragma once
 
-#include <stdlib.h>
-#include <string.h>
-#include "wiced_audio_manager.h"
-#include "bt_hs_spk_handsfree.h"
-
-
-/**
- *
- * Volume levels passed from the application to Audio Manager should be in the range 0 to 10
- * calculating from 0 to 15 levels to 0 to 10 levels
- *
- * @param           int32_t  : vol from app.
- *
- * @return          volume in AM level
- */
-int32_t bt_hs_spk_handsfree_utils_hfp_volume_to_am_volume(int32_t vol)
-{
-    uint32_t remainder;
-    int32_t am_level;
-
-    am_level    = (vol * AM_VOL_LEVEL_HIGH) / HFP_VOLUME_HIGH;
-    remainder   = (vol * AM_VOL_LEVEL_HIGH) % HFP_VOLUME_HIGH;
-
-    if (remainder >= AM_VOL_LEVEL_HIGH)
-    {
-        am_level++;
-    }
-
-    return am_level;
-}
+void fastpair_sec_sha256(uint8_t *in, uint16_t in_len, uint8_t *out);
+void fastpair_sec_aes_ecb_128_encrypt(uint8_t *p_dout, uint8_t *p_din, uint8_t *p_key);
+void fastpair_sec_aes_ecb_128_decrypt(uint8_t *p_dout, uint8_t *p_din, uint8_t *p_key);
+int fastpair_sec_uecc_shared_secret(uint8_t *peer_pub_key, uint8_t *priv_key, uint8_t *secret);

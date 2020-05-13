@@ -9,6 +9,9 @@
 #include "wiced_bt_ak4679_reg_map.h"
 #include "wiced_bt_codec_ak4679.h"
 #include "wiced.h"
+#ifdef CYW43012C0
+#include "wiced_platform.h"
+#endif // CYW43012C0
 
 static uint32_t pdn_port;
 static uint32_t pin_scl;
@@ -19,8 +22,9 @@ static int32_t g_mic_gain;
 static int32_t g_volume_level;
 static platform_audio_io_device_t sink_device;
 
-#ifdef DSP_BOOT_RAMDOWNLOAD
 static wiced_bool_t init_done = WICED_FALSE;
+#ifdef DSP_BOOT_RAMDOWNLOAD
+//static wiced_bool_t init_done = WICED_FALSE;
 extern void platform_effect_ak4679_dsp_ram_download(void);
 #endif
 
@@ -30,6 +34,13 @@ extern void platform_effect_ak4679_dsp_ram_download(void);
 
 wiced_result_t platform_ak4679_init( platform_audio_port* data_port )
 {
+#ifdef CYW43012C0
+    if (init_done == WICED_FALSE)
+    {
+        wiced_platform_init();
+        init_done = WICED_TRUE;
+    }
+#else // !CYW43012C0
     wiced_result_t result;
 
     pdn_port = data_port->pin_reset;
@@ -40,10 +51,9 @@ wiced_result_t platform_ak4679_init( platform_audio_port* data_port )
             data_port->i2s_pin_sclk, data_port->i2s_pin_ws,
             data_port->i2s_pin_dout, data_port->i2s_pin_din);
 
-#ifndef CYW43012C0
     wiced_hal_pcm_select_pads( data_port->i2s_pin_sclk, data_port->i2s_pin_ws,
             data_port->i2s_pin_dout, data_port->i2s_pin_din );
-#endif
+
 #ifdef DSP_BOOT_RAMDOWNLOAD
     if(init_done == WICED_FALSE)
     {
@@ -51,7 +61,9 @@ wiced_result_t platform_ak4679_init( platform_audio_port* data_port )
         init_done = WICED_TRUE;
         platform_effect_ak4679_dsp_ram_download();
     }
-#endif
+#endif // DSP_BOOT_RAMDOWNLOAD
+#endif // CYW43012C0
+
     WICED_BT_TRACE("ak4679_device_register pass-->\n");
     return WICED_SUCCESS; //result;
 }
@@ -82,12 +94,18 @@ wiced_result_t platform_ak4679_play_rec_init( platform_audio_port* data_port )
 
 wiced_result_t platform_ak4679_deinit( void* device_data )
 {
+#ifdef CYW43012C0
+    init_done = WICED_FALSE;
+#endif
     /*TODO*/
     return WICED_SUCCESS;
 }
 
 wiced_result_t platform_ak4679_play_rec_deinit( void* device_data )
 {
+#ifdef CYW43012C0
+    init_done = WICED_FALSE;
+#endif
     /*TODO*/
     return WICED_SUCCESS;
 }

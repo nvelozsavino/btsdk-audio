@@ -46,7 +46,7 @@
 /**
  *  @brief Audio Manager stream information
  */
-typedef struct __attribute__((packed))
+typedef struct
 {
     uint32_t                    no_of_codec_devices;
     stream_type_t               stream_type;
@@ -58,7 +58,7 @@ typedef struct __attribute__((packed))
     platform_audio_io_device_t  platform_iodevice;
 } audio_manager_stream_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bool_t            initialized;
     int32_t                 playback_stream_opened;

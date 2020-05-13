@@ -47,6 +47,7 @@
 #include "wiced_bt_hfp_ag.h"
 #include "wiced_bt_cfg.h"
 #include "wiced_timer.h"
+#include "wiced_bt_utils.h"
 
 /******************************************************
  *                     Constants
@@ -119,10 +120,6 @@ typedef union
 /* Audio Gateway Configuration */
 extern uint32_t ag_features;
 
-/* BD ADDR Common */
-extern BD_ADDR             bd_addr_any;
-extern BD_ADDR             bd_addr_null;
-
 /* SDP functions */
 extern void     hfp_ag_sdp_init(void);
 extern void     hfp_ag_sdp_start_discovery( hfp_ag_session_cb_t *p_scb );
@@ -148,13 +145,5 @@ extern void     hfp_ag_hci_send_ag_event( uint16_t evt, uint16_t handle, hfp_ag_
 
 /* AT functions */
 extern void     hfp_ag_parse_AT_command (hfp_ag_session_cb_t *p_scb);
-
-/* String Utility functions */
-extern char    *utl_strcpy( char *p_dst, char *p_src );
-extern int      utl_strlen( char *p_str );
-extern int16_t  utl_str2int( char *p_s );
-extern int      utl_strucmp( char *p_s, char *p_t );
-extern uint8_t  utl_itoa( uint16_t i, char *p_s );
-extern void     utl_bdcpy( BD_ADDR a, BD_ADDR b );
 
 #endif /* HFP_AG_H */

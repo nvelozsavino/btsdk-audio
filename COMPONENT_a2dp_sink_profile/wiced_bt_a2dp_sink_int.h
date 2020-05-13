@@ -44,6 +44,7 @@
 
 #include "wiced_bt_trace.h"
 #include "wiced_bt_sdp.h"
+#include "wiced_bt_utils.h"
 /*****************************************************************************
 **  Constants
 *****************************************************************************/
@@ -435,13 +436,6 @@ extern wiced_bool_t wiced_bt_a2dp_sink_cfg_init(wiced_bt_a2dp_codec_info_t *p_co
 extern void wiced_bt_a2dp_sink_cfg_setcfg_ind_handler(
     wiced_bt_a2dp_codec_info_list_t *p_codec_capabilities,
     wiced_bt_a2dp_sink_str_msg_t *str_msg);
-
-/* Utility functions */
-extern void wiced_bt_a2dp_sink_utils_bdcpy(wiced_bt_device_address_t a,
-    const wiced_bt_device_address_t b);
-
-extern int wiced_bt_a2dp_sink_utils_bdcmp(const wiced_bt_device_address_t a,
-    const wiced_bt_device_address_t b);
 
 /* Debug functions */
 #if (defined(WICED_BT_A2DP_SINK_DEBUG) && WICED_BT_A2DP_SINK_DEBUG == TRUE)

@@ -43,7 +43,7 @@
 #include "wiced_hal_puart.h"
 #include "wiced_bt_gatt.h"
 #include "wiced_hal_nvram.h"
-#include "fastpair_key.h"
+#include "fastpair_sec_utils.h"
 #include "wiced_bt_ble.h"
 #include "wiced_memory.h"
 #include "wiced_hal_rand.h"
@@ -851,7 +851,8 @@ static wiced_bool_t gfps_provider_gatt_event_attribute_request_handler_write_key
         }
 
         /* Decrypt the encrypted raw request. */
-        aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_request,
+
+        fastpair_sec_aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_request,
                             (uint8_t *) &gfps_provider_cb.gatt.keybase_pairing_data.encrypted_req,
                             gfps_provider_cb.anti_spoofing_aes_key);
 
@@ -870,7 +871,7 @@ static wiced_bool_t gfps_provider_gatt_event_attribute_request_handler_write_key
                 GFPS_TRACE("Try account key %d\n", i);
 
                 /* Decrypt the encrypted raw request. */
-                aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_request,
+                fastpair_sec_aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_request,
                                     (uint8_t *) &gfps_provider_cb.gatt.keybase_pairing_data.encrypted_req,
                                     p_account_key->key);
 
@@ -1023,7 +1024,7 @@ static wiced_bool_t gfps_provider_gatt_event_attribute_request_handler_write_pas
     }
 
     /* Decrypt this Encrypted Raw Passkey. */
-    aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_passkey,
+    fastpair_sec_aes_ecb_128_decrypt((uint8_t *) &decrypted_raw_passkey,
                         (uint8_t *) &gfps_provider_cb.gatt.passkey,
                         gfps_provider_cb.anti_spoofing_aes_key);
 
@@ -1123,7 +1124,7 @@ static wiced_bool_t gfps_provider_gatt_event_attribute_request_handler_write_acc
     }
 
     /* Decrypt this Encrypted Account Key. */
-    aes_ecb_128_decrypt((uint8_t *) decrypted_account_key,
+    fastpair_sec_aes_ecb_128_decrypt((uint8_t *) decrypted_account_key,
                         (uint8_t *) gfps_provider_cb.gatt.accountkey,
                         gfps_provider_cb.anti_spoofing_aes_key);
 
@@ -1289,7 +1290,8 @@ static wiced_bt_gatt_status_t gfps_provider_raw_response_send( uint8_t *aes_key 
     GFPS_TRACE("raw_resp: ");
     gfps_provider_data_hex_display((uint8_t *) &raw_resp, sizeof(gfps_raw_response_t));
 
-    aes_ecb_128_encrypt((uint8_t *)&en_resp, (uint8_t *)&raw_resp, aes_key);
+    fastpair_sec_aes_ecb_128_encrypt((uint8_t *)&en_resp, (uint8_t *)&raw_resp, aes_key);
+
     GFPS_TRACE("encrypted raw_resp: ");
     gfps_provider_data_hex_display((uint8_t *) &en_resp, sizeof(gfps_raw_response_t));
 
@@ -1314,7 +1316,7 @@ static wiced_bt_gatt_status_t gfps_provider_raw_passkey_send(uint8_t *aes_key)
     GFPS_TRACE("raw_passkey: ");
     gfps_provider_data_hex_display((uint8_t *) &raw_passkey, sizeof(gfps_raw_passkey_t));
 
-    aes_ecb_128_encrypt((uint8_t *)&en_passkey, (uint8_t *)&raw_passkey, aes_key);
+    fastpair_sec_aes_ecb_128_encrypt((uint8_t *)&en_passkey, (uint8_t *)&raw_passkey, aes_key);
 
     /* notify key-based pairing characteristic */
     return wiced_bt_gatt_send_notification (gfps_provider_cb.conn_id,
@@ -1344,7 +1346,6 @@ static wiced_bool_t gfps_provider_account_data_fill(void *p_account_data, uint8_
     uint8_t sha_source[sizeof(wiced_bt_link_key_t) + sizeof(wiced_bt_device_address_t)];
     uint8_t sha_result[32] = {0};
     uint8_t sha_source_len;
-    tHW_SHA2 hw_sha2;
     uint32_t X[8] = {0};
     uint32_t value;
     uint8_t K;
@@ -1414,16 +1415,8 @@ static wiced_bool_t gfps_provider_account_data_fill(void *p_account_data, uint8_
             }
 
             /* b. Obtain the 256-bit hashed value (H). */
-            hw_sha2.polling_flag = HW_SECENG_POLLING;
-            hw_sha2.hmac_en      = 0;
-            hw_sha2.sha2_mode    = HW_SHA256;
-            hw_sha2.msg_len      = sha_source_len;
-            hw_sha2.key_len      = 0;
-            hw_sha2.key_ptr      = NULL;
-            hw_sha2.in_ptr       = (uint32_t *) sha_source;
-            hw_sha2.out_ptr      = sha_result;
-            hw_sha2.callback     = NULL;
-            hw_sha2_engine(&hw_sha2);
+
+            fastpair_sec_sha256(sha_source, sha_source_len, sha_result);
 
             /* c. Divide H into eight 32-bit unsigned integers, X={X0,...,X7} */
             for (j = 0 ; j < _countof(X) ; j++)
@@ -1729,29 +1722,17 @@ static wiced_bool_t gfps_provider_key_aes_calculate(uint8_t *public_key, uint8_t
     //uint8_t i;
     int ret = 0;
     wiced_result_t result = WICED_FALSE;
-    tHW_SHA2 hw_sha2;
     uint8_t shared_key[32] = {0};
     uint8_t sha_result[32] = {0};
 
-    ret = uECC_shared_secret(public_key, private_key, shared_key);
+    ret = fastpair_sec_uecc_shared_secret(public_key, private_key, shared_key);
     if (ret != 1)
     {
         GFPS_TRACE("shared secret error:\n");
         return WICED_FALSE;
     }
 
-    hw_sha2.polling_flag = HW_SECENG_POLLING;
-    hw_sha2.hmac_en      = 0;
-    hw_sha2.sha2_mode    = HW_SHA256;
-    hw_sha2.msg_len      = 32;
-    hw_sha2.key_len      = 0;
-    hw_sha2.key_ptr      = NULL;
-    hw_sha2.in_ptr       = (uint32_t *)shared_key;
-    hw_sha2.out_ptr      = sha_result;
-    hw_sha2.callback     = NULL;
-
-    hw_sha2_engine(&hw_sha2);
-
+    fastpair_sec_sha256(shared_key, 32, sha_result);
     memcpy(aes_key, sha_result, 16);
 
     return WICED_TRUE;

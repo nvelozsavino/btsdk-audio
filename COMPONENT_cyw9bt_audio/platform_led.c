@@ -44,13 +44,6 @@
 #include "wiced_hal_aclk.h"
 #include "wiced_hal_pwm.h"
 
-#ifdef CYW43012C0
-typedef pwm_config_t wiced_pwm_config_t;
-#define WICED_ACLK0             ACLK0
-#define WICED_ACLK1             ACLK1
-#define WICED_ACLK_FREQ_24_MHZ  ACLK_FREQ_24_MHZ
-#endif
-
 /******************************************************
  *                      Macros
  ******************************************************/

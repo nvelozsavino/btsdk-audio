@@ -120,7 +120,7 @@ static void wiced_bt_a2dp_sink_save_addr(wiced_bt_a2dp_sink_scb_t *p_scb,
 {
     WICED_BTA2DP_TRACE("%s: recfg_sup:%d, suspend_sup:%d \n", __FUNCTION__,
         p_scb->recfg_sup, p_scb->suspend_sup);
-    if(wiced_bt_a2dp_sink_utils_bdcmp(p_scb->peer_addr, b) != 0)
+    if(utl_bdcmp(p_scb->peer_addr, b) != 0)
     {
         WICED_BTA2DP_SINK_ERROR("reset flags \n");
         /* A new addr, reset the supported flags */
@@ -130,7 +130,7 @@ static void wiced_bt_a2dp_sink_save_addr(wiced_bt_a2dp_sink_scb_t *p_scb,
 
     /* Do this copy anyway, just in case the first addr matches
      * the control block one by accident */
-    wiced_bt_a2dp_sink_utils_bdcpy(p_scb->peer_addr, b);
+    utl_bdcpy(p_scb->peer_addr, b);
 }
 
 /*******************************************************************************
@@ -164,7 +164,7 @@ static void wiced_bt_a2dp_sink_proc_stream_evt(uint8_t handle,
         /* Copy event data, bd addr, and handle to event message buffer */
         if (bd_addr != NULL)
         {
-            wiced_bt_a2dp_sink_utils_bdcpy(p_msg->bd_addr, bd_addr);
+            utl_bdcpy(p_msg->bd_addr, bd_addr);
             WICED_BTA2DP_TRACE("bd_addr:%02x-%02x-%02x-%02x-%02x-%02x \n",
                           bd_addr[0], bd_addr[1],
                           bd_addr[2], bd_addr[3],
@@ -359,7 +359,7 @@ void wiced_bt_a2dp_sink_do_sdp(wiced_bt_a2dp_sink_ccb_t *p_ccb,
                                                ATTR_ID_BT_PROFILE_DESC_LIST};
 
     /* Save peer bd_addr in sdp_bd_addr */
-    wiced_bt_a2dp_sink_utils_bdcpy(wiced_bt_a2dp_sink_cb.sdp_bd_addr, p_ccb->peer_addr);
+    utl_bdcpy(wiced_bt_a2dp_sink_cb.sdp_bd_addr, p_ccb->peer_addr);
 
     uuid_list.len       = LEN_UUID_16;
     uuid_list.uu.uuid16 = UUID_SERVCLASS_AUDIO_SOURCE;
@@ -547,7 +547,7 @@ void wiced_bt_a2dp_sink_config_ind(wiced_bt_a2dp_sink_ccb_t *p_ccb,
         (psc_mask != (p_scb->cfg.psc_mask&~AVDT_PSC_DELAY_RPT))))
     {
         setconfig.err_code  = AVDT_ERR_UNSUP_CFG;
-        wiced_bt_a2dp_sink_utils_bdcpy(setconfig.peer_addr, p_data->str_msg.bd_addr);
+        utl_bdcpy(setconfig.peer_addr, p_data->str_msg.bd_addr);
         wiced_bt_a2dp_sink_ssm_execute(p_ccb, (wiced_bt_a2dp_sink_data_t*) &setconfig,
             WICED_BT_A2DP_SINK_STR_CONFIG_RSP_FAIL_EVT);
     }
@@ -661,7 +661,7 @@ void wiced_bt_a2dp_sink_sig_closed(wiced_bt_a2dp_sink_ccb_t *p_ccb,
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
 
     /* Send callback event to the upper layer to inform streaming channel is closed */
-    wiced_bt_a2dp_sink_utils_bdcpy(disconnect.bd_addr, p_ccb->peer_addr);
+    utl_bdcpy(disconnect.bd_addr, p_ccb->peer_addr);
     disconnect.result = WICED_SUCCESS;
     disconnect.handle = p_ccb->p_scb->avdt_handle;
 
@@ -691,7 +691,7 @@ void wiced_bt_a2dp_sink_sig_open_fail(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
 
-    wiced_bt_a2dp_sink_utils_bdcpy(connect.bd_addr, p_ccb->peer_addr);
+    utl_bdcpy(connect.bd_addr, p_ccb->peer_addr);
     connect.result = WICED_BT_ERROR;
     connect.handle = p_ccb->p_scb->avdt_handle;
 
@@ -741,7 +741,7 @@ void wiced_bt_a2dp_sink_str_opened(wiced_bt_a2dp_sink_ccb_t *p_ccb,
      * the connection will be rejected.
      */
     /* check if other audio channel is started. If yes, start */
-    wiced_bt_a2dp_sink_utils_bdcpy(connect.bd_addr, p_scb->peer_addr);
+    utl_bdcpy(connect.bd_addr, p_scb->peer_addr);
     connect.result = WICED_SUCCESS;
     connect.handle = p_scb->avdt_handle;
     ctrl_data.hdr.err_param = 0; /*TODO*/
@@ -762,7 +762,7 @@ void wiced_bt_a2dp_sink_str_open_fail(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
 
-    wiced_bt_a2dp_sink_utils_bdcpy(connect.bd_addr, p_scb->peer_addr);
+    utl_bdcpy(connect.bd_addr, p_scb->peer_addr);
     connect.result = WICED_BT_ERROR; /*TODO: Find a better error code */
     connect.handle = p_scb->avdt_handle;
 
@@ -858,7 +858,7 @@ void wiced_bt_a2dp_sink_sdp_failed(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
 
-    wiced_bt_a2dp_sink_utils_bdcpy(connect.bd_addr, p_ccb->peer_addr);
+    utl_bdcpy(connect.bd_addr, p_ccb->peer_addr);
     connect.result = WICED_BT_ERROR; /*TODO: Find a better error code */
     connect.handle = p_ccb->p_scb->avdt_handle;
 
@@ -988,7 +988,7 @@ void wiced_bt_a2dp_sink_str_stopped(wiced_bt_a2dp_sink_ccb_t *p_ccb,
     wiced_bt_a2dp_sink_status_t suspend;
 
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
-    wiced_bt_a2dp_sink_utils_bdcpy(suspend.bd_addr, p_scb->peer_addr);
+    utl_bdcpy(suspend.bd_addr, p_scb->peer_addr);
     suspend.handle = p_scb->avdt_handle;
 
 #if ( BT_USE_TRACES==TRUE || BT_TRACE_PROTOCOL==TRUE)
@@ -1095,7 +1095,7 @@ void wiced_bt_a2dp_sink_start_ok(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 
     start.result = WICED_SUCCESS;
     start.handle = p_scb->avdt_handle;
-    wiced_bt_a2dp_sink_utils_bdcpy(start.bd_addr, p_scb->peer_addr);
+    utl_bdcpy(start.bd_addr, p_scb->peer_addr);
 
     (*wiced_bt_a2dp_sink_cb.control_cb)(WICED_BT_A2DP_SINK_START_CFM_EVT,
         (wiced_bt_a2dp_sink_event_data_t *) &start);
@@ -1124,7 +1124,7 @@ void wiced_bt_a2dp_sink_start_failed(wiced_bt_a2dp_sink_ccb_t *p_ccb,
     {
         start.result = WICED_ERROR;
         start.handle = p_scb->avdt_handle;
-        wiced_bt_a2dp_sink_utils_bdcpy(start.bd_addr, p_scb->peer_addr);
+        utl_bdcpy(start.bd_addr, p_scb->peer_addr);
 
 #if (defined(WICED_BT_A2DP_SINK_USE_LITEHOST) && WICED_BT_A2DP_SINK_USE_LITEHOST == TRUE)
         wiced_bt_a2dp_sink_streaming_stop(p_scb->avdt_handle);
@@ -1150,7 +1150,7 @@ void wiced_bt_a2dp_sink_suspend_cfm(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 #endif
     WICED_BTA2DP_TRACE("%s \n", __FUNCTION__);
 
-    wiced_bt_a2dp_sink_utils_bdcpy(suspend.bd_addr, p_data->str_msg.bd_addr);
+    utl_bdcpy(suspend.bd_addr, p_data->str_msg.bd_addr);
     suspend.result = WICED_SUCCESS;
     suspend.handle = p_scb->avdt_handle;
 

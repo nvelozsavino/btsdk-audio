@@ -200,13 +200,6 @@ uint16_t bt_hs_spk_button_get_remain_bt_service_timer(void);
  */
 void bt_hs_spk_button_lrac_switch_restore_visibility(wiced_bool_t dissoverable, wiced_bool_t connectable, uint16_t remain_time);
 
-/**
- * bt_hs_spk_button_check_disable_pairing
- *
- * disable pairing mode if discover-able disabled
- */
-void bt_hs_spk_button_check_disable_pairing(void);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

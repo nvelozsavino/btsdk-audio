@@ -43,13 +43,25 @@
 #include "platform_audio_effects.h"
 #include "platform.h"
 
+#if defined(CYW43012C0)
+#define WICED_BUTTON1 (WICED_GPIO_02)
+#else
 #define WICED_BUTTON1 (WICED_P00)
 #define WICED_BUTTON3 (WICED_P04)
 #define WICED_BUTTON4 (WICED_P06)
 #define WICED_BUTTON5 (WICED_P02)
+#endif
 
 gpio_button_t platform_gpio_buttons[] =
 {
+#if defined(CYW43012C0)
+    [PLATFORM_BUTTON_1] =
+    {
+        .polarity   = WICED_ACTIVE_HIGH,
+        .gpio       = WICED_BUTTON1,
+        .trigger    = IRQ_TRIGGER_BOTH_EDGES,
+    },
+#else
     [PLATFORM_BUTTON_1] =
     {
         .polarity   = WICED_ACTIVE_HIGH,
@@ -75,6 +87,7 @@ gpio_button_t platform_gpio_buttons[] =
         .gpio       = WICED_BUTTON5,
         .trigger    = IRQ_TRIGGER_BOTH_EDGES,
     },
+#endif
 };
 
 platform_led_config_t platform_led_config[PLATFORM_LED_MAX] =
@@ -142,6 +155,17 @@ extern platform_audio_port akm4679_audio_port;
 
 /*platform I2C/I2S pin configs for supported codec*/
 platform_audio_port akm4679_audio_port = {
+#if defined(CYW43012C0)
+    .i2c_speed      = I2CM_SPEED_400KHZ,
+    .i2c_pin_scl    = WICED_GPIO_05,    // BT_GPIO5
+    .i2c_pin_sda    = WICED_GPIO_04,    // BT_GPIO4
+    .i2s_mode       = I2S_SLAVE,
+    .i2s_pin_sclk   = WICED_GPIO_08,    // BT_PCM_CLK, A_GPIO[0]
+    .i2s_pin_ws     = WICED_GPIO_09,    // BT_PCM_SYNC, A_GPIO[1]
+    .i2s_pin_din    = WICED_GPIO_11,    // BT_PCM_IN, A_GPIO[3]
+    .i2s_pin_dout   = WICED_GPIO_10,    // BT_PCM_OUT, A_GPIO[2]
+    .pin_reset      = WICED_P34,
+#else
     .i2c_speed = I2CM_SPEED_400KHZ,
     .i2c_pin_scl = WICED_P17,
     .i2c_pin_sda = WICED_P16,
@@ -151,6 +175,7 @@ platform_audio_port akm4679_audio_port = {
     .i2s_pin_din = WICED_P01,
     .i2s_pin_dout = WICED_P28,
     .pin_reset = WICED_P34,
+#endif
 };
 
 platform_audio_device_interface_t akm4679_play =

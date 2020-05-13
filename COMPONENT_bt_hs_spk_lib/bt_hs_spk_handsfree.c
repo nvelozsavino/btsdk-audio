@@ -49,6 +49,7 @@
 #include "wiced_audio_manager.h"
 #include "wiced_bt_hfp_hf.h"
 #include "bt_hs_spk_pm.h"
+#include "wiced_bt_utils.h"
 
 #define BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT 500  // ms
 
@@ -1096,6 +1097,14 @@ static void bt_hs_spk_handsfree_event_handler_call_setup(handsfree_app_state_t *
     if (speaker_volume_switch == WICED_TRUE)
     {
         /* Update the speaker volume with the AG. */
+        /* Although HFP v1.7.1 Section 4.28.2 asks the HF to inform the AG of it current
+         * gain setting on Service Level Connection Establishment. the PTS test cases
+         * HFP/HF/ATH/BV-05-I,HFP/HF/ACS/BV-15-I,HFP/HF/OOR/BV-01-I only allows the HF
+         * to update its current gain after establishment of the Service Level Connection. */
+        if (p_ctx->connection_status != WICED_BT_HFP_HF_STATE_SLC_CONNECTED)
+        {
+            return;
+        }
         hfp_volume_level = bt_hs_spk_handsfree_speaker_volume_level_get(p_ctx);
 
         wiced_bt_hfp_hf_notify_volume(p_ctx->rfcomm_handle,
@@ -1850,7 +1859,7 @@ static wiced_result_t bt_hs_spk_handsfree_at_cmd_send(uint16_t handle, char *cmd
     /* copy argument if any */
     if (arg_format == WICED_BT_HFP_HF_AT_FMT_INT)
     {
-        p += util_itoa((uint16_t) int_arg, p);
+        p += utl_itoa((uint16_t) int_arg, p);
     }
     else if (arg_format == WICED_BT_HFP_HF_AT_FMT_STR)
     {
@@ -1971,11 +1980,11 @@ void bt_hs_spk_handsfree_battery_level_tx(wiced_bt_device_address_t bdaddr, uint
     /* Build the AT Command Parameter. The command looks like "AT+BIEV=1,level" */
     p = at_cmd_param;
     /* Write Battery Level Identity */
-    p += util_itoa(WICED_BT_HFP_HF_IND_ID_BATTERY, p);
+    p += utl_itoa(WICED_BT_HFP_HF_IND_ID_BATTERY, p);
     /* Write separator */
     UINT8_TO_STREAM(p, ',');
     /* Write Battery Level value */
-    p += util_itoa(battery_level, p);
+    p += utl_itoa(battery_level, p);
 
     /* Send the AT command to the AG. */
     bt_hs_spk_handsfree_at_cmd_send(p_ctx->rfcomm_handle,

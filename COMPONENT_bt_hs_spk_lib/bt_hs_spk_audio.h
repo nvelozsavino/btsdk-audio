@@ -78,7 +78,7 @@ typedef struct bt_hs_spk_audio_info
     wiced_bt_a2dp_codec_info_t  codec;  /* codec information. */
 } bt_hs_spk_audio_info_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bool_t available;
     uint8_t      current_index;
@@ -86,11 +86,11 @@ typedef struct __attribute__((packed))
     uint8_t      possible_values[BT_HS_SPK_AUDIO_AVRC_APP_ATTR_VALUES_MAX]; /* Values are all 1 based */
 } bt_hs_spk_audio_avrc_app_setting_t;
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     wiced_bt_device_address_t       peerBda;        /* Peer bd address */
 
-    struct __attribute__((packed))
+    struct
     {
         bt_hs_spk_audio_a2dp_state_t    state;      /* AVDT State machine state */
         uint16_t                        handle;     /* A2DP connection handle */
@@ -101,7 +101,7 @@ typedef struct __attribute__((packed))
         wiced_bool_t                    is_streaming_started; /* WICED_TRUE if the streaming is started. */
     } a2dp;
 
-    struct __attribute__((packed))
+    struct
     {
         wiced_bt_avrc_ct_connection_state_t state;  /* AVRC Connection State */
         uint16_t                            handle; /* AVRC Connection Handle */
@@ -116,7 +116,7 @@ typedef struct __attribute__((packed))
     uint8_t                         abs_vol;        /* Absolute volume. */
 } bt_hs_spk_audio_context_t;
 
-typedef struct __attribute__((packed)) bt_hs_spk_audio_context_info
+typedef struct bt_hs_spk_audio_context_info
 {
     bt_hs_spk_audio_context_t   context[BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS];
     uint8_t                     active_audio_context_index;

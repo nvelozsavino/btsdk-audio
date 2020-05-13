@@ -313,9 +313,9 @@ typedef struct bt_hs_spk_eir_config
     } app_specific;
 } bt_hs_spk_eir_config_t;
 
-typedef struct __attribute__((packed)) bt_hs_spk_control_connection_info
+typedef struct bt_hs_spk_control_connection_info
 {
-    struct __attribute__((packed))
+    struct
     {
         wiced_bt_device_address_t           bdaddr;
         wiced_bool_t                        connected;

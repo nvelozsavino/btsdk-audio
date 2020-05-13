@@ -158,7 +158,7 @@ static wiced_bt_a2dp_sink_ccb_t *wiced_bt_a2dp_sink_alloc_ccb(
             wiced_bt_a2dp_sink_cb.ccb[idx].p_scb      = &(wiced_bt_a2dp_sink_cb.p_scb[idx]);
             wiced_bt_a2dp_sink_cb.ccb[idx].p_dt_cback = wiced_bt_a2dp_sink_ctrl_cback;
 
-            wiced_bt_a2dp_sink_utils_bdcpy(wiced_bt_a2dp_sink_cb.ccb[idx].peer_addr,
+            utl_bdcpy(wiced_bt_a2dp_sink_cb.ccb[idx].peer_addr,
                                            p_data->api_data.bd_address);
 
             WICED_BTA2DP_TRACE("%s: ccb_handle:%d \n", __FUNCTION__,
@@ -244,7 +244,7 @@ static wiced_bt_a2dp_sink_ccb_t *wiced_bt_a2dp_sink_get_ccb_by_bd_addr(
     for(idx = 0; idx < WICED_BT_A2DP_SINK_MAX_NUM_CONN; idx++)
     {
         if(wiced_bt_a2dp_sink_cb.ccb[idx].in_use == WICED_TRUE &&
-            !wiced_bt_a2dp_sink_utils_bdcmp(wiced_bt_a2dp_sink_cb.ccb[idx].peer_addr, bd_addr))
+            !utl_bdcmp(wiced_bt_a2dp_sink_cb.ccb[idx].peer_addr, bd_addr))
         {
             WICED_BTA2DP_TRACE("wiced_bt_a2dp_sink_get_ccb_by_bd_addr idx:%d \n", idx);
             p_ccb = &wiced_bt_a2dp_sink_cb.ccb[idx];
@@ -401,7 +401,7 @@ static void wiced_bt_a2dp_sink_sig_change(wiced_bt_a2dp_sink_data_t *p_data)
             else
             {
                 /* If cannot find, connection is initiated by peer, allocate a new ccb */
-                wiced_bt_a2dp_sink_utils_bdcpy(p_data->api_data.bd_address,
+                utl_bdcpy(p_data->api_data.bd_address,
                                                p_data->str_msg.bd_addr);
                 if ((p_ccb = wiced_bt_a2dp_sink_alloc_ccb(p_data)) != NULL)
                 {

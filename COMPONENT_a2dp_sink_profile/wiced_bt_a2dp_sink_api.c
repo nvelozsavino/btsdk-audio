@@ -58,50 +58,6 @@ typedef enum
 
 #define GKI_send_msg(a,b,p_msg) wiced_bt_a2dp_sink_hdl_event((BT_HDR *)p_msg)
 
-/*******************************************************************************
-**
-** Function         wiced_bt_a2dp_sink_utils_bdcpy
-**
-** Description      Copy bd addr b to a.
-**
-** Returns          void
-**
-*******************************************************************************/
-void wiced_bt_a2dp_sink_utils_bdcpy(wiced_bt_device_address_t a,
-    const wiced_bt_device_address_t b)
-{
-    int i;
-
-    for(i = BD_ADDR_LEN; i!=0; i--)
-    {
-        *a++ = *b++;
-    }
-}
-
-/*******************************************************************************
-**
-** Function         wiced_bt_a2dp_sink_utils_bdcmp
-**
-** Description          Compare bd addr b to a.
-**
-** Returns              Zero if b==a, nonzero otherwise (like memcmp).
-**
-*******************************************************************************/
-int wiced_bt_a2dp_sink_utils_bdcmp(const wiced_bt_device_address_t a,
-    const wiced_bt_device_address_t b)
-{
-    int i;
-
-    for(i = BD_ADDR_LEN; i!=0; i--)
-    {
-        if( *a++ != *b++ )
-        {
-            return -1;
-        }
-    }
-    return 0;
-}
-
 wiced_result_t wiced_bt_a2dp_sink_init(wiced_bt_a2dp_config_data_t *p_config_data,
     wiced_bt_a2dp_sink_control_cb_t control_cb )
 {
@@ -195,7 +151,7 @@ wiced_result_t wiced_bt_a2dp_sink_connect(wiced_bt_device_address_t bd_address)
     }
 
     p_buf->hdr.event = WICED_BT_A2DP_SINK_API_CONNECT_EVT;
-    wiced_bt_a2dp_sink_utils_bdcpy(p_buf->bd_address, bd_address);
+    utl_bdcpy(p_buf->bd_address, bd_address);
 
     GKI_send_msg(WICED_BT_A2DP_SINK_TASK_ID, WICED_BT_A2DP_SINK_TASK_MBOX, p_buf);
     wiced_bt_free_buffer(p_buf);

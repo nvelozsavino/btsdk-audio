@@ -38,6 +38,7 @@
 
 #include "wiced_bt_hfp_hf_int.h"
 #include "string.h"
+#include "wiced_bt_utils.h"
 
 #ifdef CYW20706A2
 #define WICED_ALREADY_INITIALIZED	1000
@@ -47,7 +48,6 @@
 
 extern void wiced_bt_free_buffer( void *p_buf );
 extern void* wiced_bt_get_buffer( uint16_t size );
-extern char *utl_strcpy( char *p_dst, char *p_src );
 
 static wiced_result_t wiced_bt_hfp_hf_init_check_and_alloc_buffer ( uint32_t buf_size, void** p_buf )
 {
@@ -151,7 +151,7 @@ wiced_result_t wiced_bt_hfp_hf_connect(wiced_bt_device_address_t bd_address)
 
     wiced_bt_hfp_hf_cb.ag_profile_uuid = UUID_SERVCLASS_AG_HANDSFREE;
     p_buf->hdr.event = WICED_BT_HFP_HF_API_CONNECT_EVT;
-    wiced_bt_hfp_hf_utils_bdcpy(p_buf->bd_address, bd_address);
+    utl_bdcpy(p_buf->bd_address, bd_address);
     GKI_send_msg(WICED_BT_HFP_HF_TASK_ID, WICED_BT_HFP_HF_TASK_MBOX, p_buf);
 
     wiced_bt_free_buffer(p_buf);

@@ -39,18 +39,6 @@
 
 
 /**
- * This utility copies a character string to another
- */
-char *utl_strcpy(char *p_dst, const char *p_src);
-
-/**
- * This utility function converts a UINT16 to a string. The string is NULL-terminated.
- *
- * @return Length of string.
- */
-int util_itoa(int i, char *p_s);
-
-/**
  *
  * Volume levels passed from the application to Audio Manager should be in the range 0 to 10
  * calculating from 0 to 15 levels to 0 to 10 levels

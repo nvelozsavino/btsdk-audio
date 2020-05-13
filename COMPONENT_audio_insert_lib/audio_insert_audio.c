@@ -279,9 +279,11 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
         audio_insert_audio_cb.sample_rate = p_data->a2dp_info.sampleRate;
         break;
 
+#ifdef CYW20721B2
     /* Lite Host indicates start SCO audio injection */
     case LITE_HOST_EVT_START_SCO_INJECT:    // WICED_BT_AUDIO_INSERT_EVT_SCO
         break;
+#endif
 
     default:
         break;

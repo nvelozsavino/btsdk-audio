@@ -60,7 +60,7 @@
 
 typedef void (*bt_hs_spk_audio_a2dp_sink_event_handler)(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_a2dp_sink_event_data_t *p_data);
 
-typedef struct __attribute__((packed))
+typedef struct
 {
     bt_hs_spk_audio_context_t                       context[BT_HS_SPK_AUDIO_CONNECTIONS];
     bt_hs_spk_audio_context_t                       *p_active_context;
