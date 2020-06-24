@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -873,6 +873,9 @@ am_audio_io_device_t bt_hs_spk_get_audio_sink(void)
 void bt_hs_spk_set_audio_sink(am_audio_io_device_t sink)
 {
     bt_hs_spk_control_cb.am_io_device = sink;
+
+    /* Update the SCO voice route. */
+    bt_hs_spk_handsfree_sco_voice_path_update(sink == AM_UART ? WICED_TRUE : WICED_FALSE);
 }
 
 /**

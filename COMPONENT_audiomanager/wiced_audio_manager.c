@@ -1,5 +1,5 @@
 /**
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -63,6 +63,7 @@ typedef struct
     wiced_bool_t            initialized;
     int32_t                 playback_stream_opened;
     int32_t                 hfp_stream_opened;
+    int32_t                 capture_stream_opened;
     uint32_t                nrec_effect_id;
     audio_manager_stream_t  stream[MAX_NO_OF_STREAMS];
 } wiced_audio_manager_info_t;
@@ -79,7 +80,7 @@ static int32_t wiced_am_stream_set_default_param(uint32_t stream_id, uint32_t st
  */
 void wiced_am_init(void)
 {
-    WICED_BT_TRACE("Audio Manager init \n");
+    WICED_BT_TRACE("Audio Manager init\n");
     int32_t i;
 
     if (wiced_am_info.initialized == WICED_TRUE)
@@ -103,7 +104,7 @@ void wiced_am_init(void)
  */
 int32_t wiced_am_stream_open(uint32_t stream_type)
 {
-    WICED_BT_TRACE("Audio Manager Stream Open \n");
+    WICED_BT_TRACE("Audio Manager Stream Open\n");
     int32_t i;
     int32_t playback_opened;
 
@@ -132,7 +133,7 @@ int32_t wiced_am_stream_open(uint32_t stream_type)
     if (stream_type == A2DP_PLAYBACK)
     {
         /** Initialize stream type     */
-        WICED_BT_TRACE("am_stream_open A2DP_PLAYBACK \n");
+        WICED_BT_TRACE("am_stream_open A2DP_PLAYBACK\n");
         wiced_am_info.stream[i].no_of_codec_devices = 1;
         wiced_am_info.stream[i].codec_device_id     = PLATFORM_DEVICE_PLAY;
         if (!wiced_am_info.playback_stream_opened)
@@ -144,11 +145,11 @@ int32_t wiced_am_stream_open(uint32_t stream_type)
             }
         }
         wiced_am_info.playback_stream_opened++;
-        WICED_BT_TRACE("am_stream_open A2DP stream_id: %d \n", i);
+        WICED_BT_TRACE("am_stream_open A2DP stream_id: %d\n", i);
     }
     else if (stream_type == HFP)
     {
-        WICED_BT_TRACE("am_stream_open HFP \n");
+        WICED_BT_TRACE("am_stream_open HFP\n");
         wiced_am_info.stream[i].no_of_codec_devices = 2;
         wiced_am_info.stream[i].codec_device_id     = PLATFORM_DEVICE_PLAY_RECORD;
         if (!wiced_am_info.hfp_stream_opened)
@@ -160,7 +161,22 @@ int32_t wiced_am_stream_open(uint32_t stream_type)
             }
         }
         wiced_am_info.hfp_stream_opened++;
-        WICED_BT_TRACE("am_stream_open HFP stream_id: %d \n", i);
+        WICED_BT_TRACE("am_stream_open HFP stream_id: %d\n", i);
+    }
+    else if (stream_type == CAPTURE)
+    {
+        WICED_BT_TRACE("am_stream_open Capture\n");
+        wiced_am_info.stream[i].no_of_codec_devices = 1;
+        wiced_am_info.stream[i].codec_device_id     = PLATFORM_DEVICE_CAPTURE;
+        if (!wiced_am_info.capture_stream_opened)
+        {
+            if (platform_audio_device_init(wiced_am_info.stream[i].codec_device_id) != WICED_SUCCESS)
+            {
+                WICED_BT_TRACE("platform_audio_device_init failed\n");
+            }
+        }
+        wiced_am_info.capture_stream_opened++;
+        WICED_BT_TRACE("am_stream_open Capture stream_id: %d\n", i);
     }
 
     return i;
@@ -175,20 +191,15 @@ int32_t wiced_am_stream_open(uint32_t stream_type)
  */
 wiced_result_t wiced_am_stream_start(int32_t stream_id)
 {
-    WICED_BT_TRACE("Audio Manager stream start stream_id: %d \n",stream_id);
+    WICED_BT_TRACE("Audio Manager stream start stream_id: %d\n",stream_id);
 
     if ((0<=stream_id) && (stream_id < MAX_NO_OF_STREAMS))
     {
         switch (wiced_am_info.stream[stream_id].stream_type)
         {
         case HFP:
-            if (WICED_SUCCESS != platform_audio_device_start(wiced_am_info.stream[stream_id].codec_device_id))
-            {
-                WICED_BT_TRACE("platform_audio_device_start failed\n");
-                return WICED_NOT_FOUND;
-            }
-            break;
         case A2DP_PLAYBACK:
+        case CAPTURE:
             if (WICED_SUCCESS != platform_audio_device_start(wiced_am_info.stream[stream_id].codec_device_id))
             {
                 WICED_BT_TRACE("platform_audio_device_start failed\n");
@@ -196,7 +207,7 @@ wiced_result_t wiced_am_stream_start(int32_t stream_id)
             }
             break;
         default:
-            WICED_BT_TRACE("Nothing to be done at this point of time \n");
+            WICED_BT_TRACE("Nothing to be done at this point of time\n");
             break;
         }
 
@@ -206,7 +217,6 @@ wiced_result_t wiced_am_stream_start(int32_t stream_id)
     {
         return WICED_NOT_FOUND;
     }
-
 }
 
 /**
@@ -222,17 +232,12 @@ wiced_result_t wiced_am_stream_stop(int32_t stream_id)
 
     if ((0 <= stream_id) && (stream_id < MAX_NO_OF_STREAMS))
     {
-        WICED_BT_TRACE("Audio Manager Stream Stop \n");
+        WICED_BT_TRACE("Audio Manager Stream Stop\n");
         switch (wiced_am_info.stream[stream_id].stream_type)
         {
         case HFP:
-            if (WICED_SUCCESS != platform_audio_device_stop(wiced_am_info.stream[stream_id].codec_device_id))
-            {
-                WICED_BT_TRACE("platform_audio_device_stop failed\n");
-                return WICED_NOT_FOUND;
-            }
-            break;
         case A2DP_PLAYBACK:
+        case CAPTURE:
             if (WICED_SUCCESS != platform_audio_device_stop(wiced_am_info.stream[stream_id].codec_device_id))
             {
                 WICED_BT_TRACE("platform_audio_device_stop failed\n");
@@ -240,7 +245,7 @@ wiced_result_t wiced_am_stream_stop(int32_t stream_id)
             }
             break;
         default:
-            WICED_BT_TRACE("Nothing to be done at this point of time \n");
+            WICED_BT_TRACE("Nothing to be done at this point of time\n");
             break;
         }
 
@@ -261,7 +266,7 @@ wiced_result_t wiced_am_stream_stop(int32_t stream_id)
  */
 wiced_result_t wiced_am_stream_close(int32_t stream_id)
 {
-    WICED_BT_TRACE("Audio Manager stream close \n");
+    WICED_BT_TRACE("Audio Manager stream close\n");
 
     if ((0 <= stream_id) && (stream_id < MAX_NO_OF_STREAMS))
     {
@@ -293,8 +298,20 @@ wiced_result_t wiced_am_stream_close(int32_t stream_id)
                 }
             }
             break;
+        case CAPTURE:
+            wiced_am_info.capture_stream_opened--;
+            WICED_BT_TRACE("Audio Manager Stream Close CAPTURE stream_id: %d\n", stream_id);
+            if (!wiced_am_info.capture_stream_opened)
+            {
+                if (WICED_SUCCESS != platform_audio_device_deinit(PLATFORM_DEVICE_CAPTURE))
+                {
+                    WICED_BT_TRACE("platform_audio_device_deinit failed\n");
+                    return WICED_NOT_FOUND;
+                }
+            }
+            break;
         default:
-            WICED_BT_TRACE("Nothing to be done at this point of time \n");
+            WICED_BT_TRACE("Nothing to be done at this point of time\n");
             break;
         }
 
@@ -330,8 +347,8 @@ wiced_result_t wiced_am_stream_set_param(int32_t stream_id, uint32_t param_type,
         switch (param_type)
         {
         case AM_AUDIO_CONFIG:
-            memcpy((void *) &wiced_am_info.stream[stream_id].audio_config, \
-                   param_config, \
+            memcpy((void *) &wiced_am_info.stream[stream_id].audio_config,
+                   param_config,
                    sizeof(audio_config_t));
 
             codec_config.sample_rate = wiced_am_info.stream[stream_id].audio_config.sr;
@@ -380,8 +397,17 @@ wiced_result_t wiced_am_stream_set_param(int32_t stream_id, uint32_t param_type,
                     return WICED_NOT_FOUND;
                 }
                 break;
+            case CAPTURE:
+                WICED_BT_TRACE("AM_AUDIO_CONFIG - CAPTURE\n");
+                codec_config.io_device = LINEIN;
+                if( WICED_SUCCESS != platform_audio_device_configure(wiced_am_info.stream[stream_id].codec_device_id, &codec_config))
+                {
+                    WICED_BT_TRACE("platform_audio_device_configure HFP failed\n");
+                    return WICED_NOT_FOUND;
+                }
+                break;
             default:
-                WICED_BT_TRACE("Nothing to be done at this point of time \n");
+                WICED_BT_TRACE("Nothing to be done at this point of time\n");
                 break;
             }
 
@@ -497,16 +523,16 @@ int32_t wiced_am_stream_set_default_param(uint32_t stream_id, uint32_t stream_ty
 {
     static platform_audio_config_t codec_config;
     int32_t i;
-    WICED_BT_TRACE("Audio Manager Stream set default param Called \n");
+    WICED_BT_TRACE("Audio Manager Stream set default param Called\n");
     for(i=0; i<wiced_am_info.stream[stream_id].no_of_codec_devices; ++i) {
-        WICED_BT_TRACE("codec device id : %d \n", wiced_am_info.stream[stream_id].codec_device_id);
+        WICED_BT_TRACE("codec device id : %d\n", wiced_am_info.stream[stream_id].codec_device_id);
         if(wiced_am_info.stream[stream_id].codec_device_id == PLATFORM_DEVICE_PLAY) {
             codec_config.sample_rate = DEFAULT_PLAYBACK_SR;
             codec_config.channels =  DEFAULT_CH;
             codec_config.bits_per_sample = DEFAULT_BITSPSAM;
             codec_config.volume = DEFAULT_VOLUME;
             codec_config.io_device = HEADPHONES;
-            WICED_BT_TRACE("playback default param being set \n");
+            WICED_BT_TRACE("playback default param being set\n");
             if( WICED_SUCCESS != platform_audio_device_configure(PLATFORM_DEVICE_PLAY, &codec_config)) {
                 WICED_BT_TRACE("platform_audio_device_configure failed\n");
                 return WICED_NOT_FOUND;
@@ -519,7 +545,7 @@ int32_t wiced_am_stream_set_default_param(uint32_t stream_id, uint32_t stream_ty
             codec_config.bits_per_sample = DEFAULT_BITSPSAM;
             codec_config.volume = DEFAULT_VOLUME;
             codec_config.io_device = ANALOGMIC;
-            WICED_BT_TRACE("Record default param being set \n");
+            WICED_BT_TRACE("Record default param being set\n");
             if( WICED_SUCCESS != platform_audio_device_configure(PLATFORM_DEVICE_PLAY_RECORD, &codec_config)) {
                 WICED_BT_TRACE("platform_audio_device_configure failed\n");
                 return WICED_NOT_FOUND;

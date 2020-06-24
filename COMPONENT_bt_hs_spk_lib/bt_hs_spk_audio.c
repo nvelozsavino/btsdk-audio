@@ -1,15 +1,36 @@
 /*
- **************************************************************************************************
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Cypress Semiconductor Corporation. All Rights Reserved.
  *
- * THIS INFORMATION IS PROPRIETARY TO Cypress Semiconductor.
+ * This software, including source code, documentation and related
+ * materials ("Software"), is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- *-------------------------------------------------------------------------------------------------
- *
- *           Copyright (c) 2019 Cypress Semiconductor.
- *                      ALL RIGHTS RESERVED
- *
- **************************************************************************************************
-
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
+ */
+/*
  **************************************************************************************************
  *
  * File Name:       bt_hs_spk_audio.c
@@ -39,6 +60,7 @@
 #include "wiced_memory.h"
 #include "wiced_bt_avrc_tg.h"
 #include <wiced_utilities.h>
+#include "wiced_transport.h"
 
 /**************************************************************************************************
 *  Type Definitions and Enums
@@ -125,7 +147,9 @@ static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_con
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
 static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
-
+#ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
+static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t op_id);
+#endif
 //=================================================================================================
 //  Global Functions
 //=================================================================================================
@@ -335,6 +359,70 @@ void bt_hs_spk_audio_app_service_set(void)
     app_set_current_service(&bt_hs_spk_audio_cb.app_service);
 }
 
+#ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
+static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t op_id)
+{
+    wiced_bool_t set_am = WICED_FALSE;
+    uint8_t abs_vol;
+    bt_hs_spk_audio_context_t *p_ctx;
+
+    /* Check if handle value is valid. */
+    p_ctx = bt_hs_spk_audio_context_get_avrc_handle((uint16_t) handle, WICED_FALSE);
+    if (p_ctx == NULL)
+    {
+    return;
+    }
+
+    /* Process the command */
+    switch(op_id)
+    {
+    case AVRC_ID_VOL_UP:    // 0x41: Volume Up
+       WICED_BT_TRACE("AVRC_ID_VOL_UP\n");
+
+       abs_vol = p_ctx->abs_vol;
+
+       if (abs_vol == BT_HS_SPK_AUDIO_VOLUME_MAX)
+       {
+           WICED_BT_TRACE("The volume in %B already reaches Maximum\n", bt_hs_spk_audio_cb.p_active_context);
+       }
+
+       if (abs_vol > (BT_HS_SPK_AUDIO_VOLUME_MAX - BT_HS_SPK_AUDIO_VOLUME_STEP))
+       {
+           abs_vol = BT_HS_SPK_AUDIO_VOLUME_MAX;
+       }
+       else
+       {
+           abs_vol += BT_HS_SPK_AUDIO_VOLUME_STEP;
+       }
+
+       bt_hs_spk_audio_volume_update(abs_vol, WICED_TRUE, p_ctx == bt_hs_spk_audio_cb.p_active_context, p_ctx);
+       break;
+    case AVRC_ID_VOL_DOWN:  // 0x42: Volume Down
+       WICED_BT_TRACE("AVRC_ID_VOL_DOWN\n");
+
+       abs_vol = p_ctx->abs_vol;
+
+       if (abs_vol == BT_HS_SPK_AUDIO_VOLUME_MIN)
+       {
+           WICED_BT_TRACE("The volume in AG %B already reaches Minimum\n", bt_hs_spk_audio_cb.p_active_context->peerBda);
+       }
+
+       if (abs_vol < BT_HS_SPK_AUDIO_VOLUME_STEP)
+       {
+           abs_vol = BT_HS_SPK_AUDIO_VOLUME_MIN;
+       }
+       else
+       {
+           abs_vol -= BT_HS_SPK_AUDIO_VOLUME_STEP;
+       }
+
+       bt_hs_spk_audio_volume_update(abs_vol, WICED_TRUE, p_ctx == bt_hs_spk_audio_cb.p_active_context, p_ctx);
+       break;
+    default:
+       break;
+    }
+}
+#endif
 /**************************************************************************************************
 * Function:     bt_hs_spk_audio_init
 *
@@ -390,6 +478,10 @@ wiced_result_t bt_hs_spk_audio_init(bt_hs_spk_control_config_audio_t *p_config, 
 #if AVRC_ADV_CTRL_INCLUDED == TRUE
     /* Register the, optional, features callback */
     wiced_bt_avrc_ct_features_register(bt_hs_spk_audio_avrc_ct_features_callback);
+#endif
+
+#ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
+    wiced_bt_avrc_ct_register_passthrough_event_callback(&bt_hs_spk_audio_avrc_passthrough_cmd_handler);
 #endif
 
     return result;
@@ -594,6 +686,8 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
 
         /* Request to suspend this audio streaming to reduce the OTA packets
          * (AVDTP Media packets). */
+        WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", p_data->start_ind.bdaddr);
+
         wiced_bt_a2dp_sink_suspend(p_data->start_ind.handle);
 
         return;
@@ -627,6 +721,8 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
 
                 /* Request to suspend this audio streaming to reduce the OTA packets
                  * (AVDTP Media packets). */
+                WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", p_data->start_ind.bdaddr);
+
                 wiced_bt_a2dp_sink_suspend(p_data->start_ind.handle);
 
                 return;
@@ -890,6 +986,8 @@ static void bt_hs_spk_audio_a2dp_sink_codec_display(wiced_bt_a2dp_sink_codec_con
  */
 static void bt_hs_spk_audio_a2dp_sink_cb_codec_config(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_a2dp_sink_event_data_t *p_data)
 {
+    wiced_bt_a2dp_sink_route_config route_config = {0};
+
     WICED_BT_TRACE("A2DP Codec Config (0x%02X, %B, %d)\n",
                    p_data->codec_config.codec.codec_id,
                    p_data->codec_config.bd_addr,
@@ -911,6 +1009,23 @@ static void bt_hs_spk_audio_a2dp_sink_cb_codec_config(bt_hs_spk_audio_context_t 
     memcpy((void *) &p_ctx->a2dp.codec_info,
            (void *) &p_data->codec_config.codec,
            sizeof(wiced_bt_a2dp_codec_info_t));
+
+    /* Update codec route if the sink route is set to use UART. */
+    if (bt_hs_spk_get_audio_sink() == AM_UART)
+    {
+        if (p_data->codec_config.codec.codec_id == WICED_BT_A2DP_CODEC_SBC)
+        {
+            route_config.route = AUDIO_ROUTE_UART;
+        }
+        else
+        {
+            route_config.route = AUDIO_ROUTE_COMPRESSED_TRANSPORT;
+        }
+
+        route_config.is_master = WICED_TRUE;
+
+        wiced_bt_a2dp_sink_update_route_config(p_ctx->a2dp.handle, &route_config);
+    }
 }
 
 /**************************************************************************************************
@@ -1314,6 +1429,8 @@ static wiced_result_t bt_hs_spk_audio_button_handler_pause_play(void)
         }
         else
         {
+            WICED_BT_TRACE("Send AVRC PAUSE to %B\n", bt_hs_spk_audio_cb.p_active_context->peerBda);
+
             result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                             AVRC_ID_PAUSE,
                                                             AVRC_STATE_PRESS,
@@ -1719,6 +1836,8 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                 {
                     /* Request to suspend this audio streaming to reduce the OTA packets
                      * (AVDTP Media packets). */
+                    WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", p_ctx->peerBda);
+
                     wiced_bt_a2dp_sink_suspend(p_ctx->a2dp.handle);
                 }
             }
@@ -1748,6 +1867,8 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                                       bt_hs_spk_audio_cb.p_active_context->peerBda);
 
                        /* Transmit the AVRC command to pause the A2DP streaming. */
+                       WICED_BT_TRACE("Send AVRC PAUSE to %B\n", p_ctx->peerBda);
+
                        wiced_bt_avrc_ct_send_pass_through_cmd(p_ctx->avrc.handle,
                                                               AVRC_ID_PAUSE,
                                                               AVRC_STATE_PRESS,
@@ -1759,6 +1880,8 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                        {
                            /* Request to suspend this audio streaming to reduce the OTA packets
                             * (AVDTP Media packets). */
+                           WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", p_ctx->peerBda);
+
                            wiced_bt_a2dp_sink_suspend(p_ctx->a2dp.handle);
                        }
 
@@ -1789,6 +1912,8 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
 
                                /* Request to suspend this audio streaming in current active context
                                 * to reduce the OTA packets (AVDTP Media packets). */
+                               WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", bt_hs_spk_audio_cb.p_active_context->peerBda);
+
                                wiced_bt_a2dp_sink_suspend(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
                            }
                        }
@@ -1851,6 +1976,8 @@ static wiced_result_t bt_hs_spk_audio_streaming_pause(bt_hs_spk_audio_context_t 
      * Otherwise, use the AVDTP command to stop the streaming. */
     if (p_ctx->avrc.state >= REMOTE_CONTROL_CONNECTED)
     {
+        WICED_BT_TRACE("Send AVRC PAUSE to %B\n", p_ctx->peerBda);
+
         return wiced_bt_avrc_ct_send_pass_through_cmd(p_ctx->avrc.handle,
                                                       AVRC_ID_PAUSE,
                                                       AVRC_STATE_PRESS,
@@ -1859,6 +1986,8 @@ static wiced_result_t bt_hs_spk_audio_streaming_pause(bt_hs_spk_audio_context_t 
     }
     else
     {
+        WICED_BT_TRACE("Send AVDP SUSPEND to %B\n", p_ctx->peerBda);
+
         return wiced_bt_a2dp_sink_suspend(p_ctx->a2dp.handle);
     }
 }

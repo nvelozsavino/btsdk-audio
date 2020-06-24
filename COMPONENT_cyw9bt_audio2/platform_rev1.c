@@ -1,5 +1,5 @@
 /**
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -88,6 +88,7 @@ gpio_button_t platform_gpio_buttons[] =
 #ifdef CS47L35_CODEC_ENABLE
 extern platform_audio_device_ops cs47l35_play_ops;
 extern platform_audio_device_ops cs47l35_play_rec_ops;
+extern platform_audio_device_ops cs47l35_capture_ops;
 /*platform SPI/I2S pin configs for supported codec*/
 extern platform_audio_port cs47l35_audio_port;
 
@@ -126,6 +127,7 @@ platform_audio_port cs47l35_audio_port = {
 #error unexpected AUDIO_SHIELD_EVK_VER
 #endif
 
+/* A2DP Sink (Render) device for platform */
 platform_audio_device_interface_t cs47l35_play =
 {
         .device_id = PLATFORM_DEVICE_PLAY,
@@ -133,7 +135,7 @@ platform_audio_device_interface_t cs47l35_play =
         .device_port = &cs47l35_audio_port,
 };
 
-/*Record device for platform*/
+/* HFP device for platform */
 platform_audio_device_interface_t cs47l35_rec =
 {
         .device_id = PLATFORM_DEVICE_PLAY_RECORD,
@@ -141,6 +143,13 @@ platform_audio_device_interface_t cs47l35_rec =
         .device_port = &cs47l35_audio_port,
 };
 
+/* A2DP Source (Capture) device for platform */
+platform_audio_device_interface_t cs47l35_capture =
+{
+        .device_id = PLATFORM_DEVICE_CAPTURE,
+        .device_ops = &cs47l35_capture_ops,
+        .device_port = &cs47l35_audio_port,
+};
 #endif
 
 /*list of all devices supported by platform
@@ -151,7 +160,8 @@ platform_audio_device_interface_t *platform_audio_device_list[] =
 {
 #ifdef CS47L35_CODEC_ENABLE
         &cs47l35_play,
-        &cs47l35_rec
+        &cs47l35_rec,
+        &cs47l35_capture,
 #endif
 };
 

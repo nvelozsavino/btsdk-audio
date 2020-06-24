@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -45,18 +45,12 @@
 #include "wiced_result.h"
 #include "wiced.h"
 #include "wiced_bt_trace.h"
-#include "gpio_button.h"
 #include "platform_button.h"
 
 /*we allow the sleep by default to allow for power save, enable/disable of the power save will be
  * controlled from the use case path*/
 uint32_t bt_hs_spk_sleep_permission = WICED_SLEEP_ALLOWED_WITHOUT_SHUTDOWN;
 uint32_t bt_hs_spk_sleep_handler(wiced_sleep_poll_type_t type );
-
-extern const gpio_button_t platform_gpio_buttons[PLATFORM_BUTTON_MAX];
-/* we set one of platform button as wake up source,
- * Bt will still wake up and serve for all LHL gpio interrupts */
-#define BT_HS_SPK_GPIO_WAKESOURCE ((uint32_t)platform_gpio_buttons[0].gpio)
 
 /*Initialize BT sleep modes for power management */
 wiced_result_t bt_hs_spk_pm_init(bt_hs_spk_control_config_sleep_t *p_config)

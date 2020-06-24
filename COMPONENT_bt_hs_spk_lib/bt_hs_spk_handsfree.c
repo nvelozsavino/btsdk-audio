@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -50,6 +50,8 @@
 #include "wiced_bt_hfp_hf.h"
 #include "bt_hs_spk_pm.h"
 #include "wiced_bt_utils.h"
+#include "wiced_transport.h"
+#include "wiced_memory.h"
 
 #define BT_HS_SPK_HANDSFREE_SCO_CONNECTING_STATE_PROTECTION_TIMEOUT 500  // ms
 
@@ -79,6 +81,7 @@ typedef struct
 
     bt_hs_spk_control_config_hfp_t  config;
     BT_HS_SPK_CONTROL_LOCAL_VOLUME_CHANGE_CB    *p_local_volume_change_cb;
+    bt_hs_spk_handsfree_mic_data_add_cb_t       *p_mic_data_add_cb;
 } bt_hs_spk_handsfree_cb_t;
 
 static void handsfree_event_callback( wiced_bt_hfp_hf_event_t event, wiced_bt_hfp_hf_event_data_t* p_data);
@@ -161,8 +164,53 @@ static void bt_hs_spk_handsfree_cb_init_context(void)
 #if (WICED_BT_HFP_HF_WBS_INCLUDED == TRUE)
         p_context->sco_params.use_wbs           = WICED_TRUE;
 #else
-        p_context->sco_params.use_wbs           = WICED_FALSE
+        p_context->sco_params.use_wbs           = WICED_FALSE;
 #endif
+    }
+}
+
+/*
+ * bt_hs_spk_handsfree_sco_data_app_callback
+ */
+static void bt_hs_spk_handsfree_sco_data_app_callback(uint32_t ltch_len, uint8_t *p_data)
+{
+    uint8_t *p_mic_data = NULL;
+    uint16_t ret_value;
+
+    /* Check if the active call session exists. */
+    if (bt_hs_spk_handsfree_cb.p_active_context == NULL)
+    {
+        return;
+    }
+
+    /* Forward the PCM data to HCI UART interface. */
+    wiced_transport_send_data(HCI_CONTROL_HCI_AUDIO_EVENT_SCO_DATA, p_data, ltch_len);
+
+    /* Check if the user application has MIC data to be sent to the AG. */
+    if (bt_hs_spk_handsfree_cb.p_mic_data_add_cb)
+    {
+        /* Allocate memory. */
+        p_mic_data = (uint8_t *) wiced_memory_allocate(ltch_len);
+
+        if (p_mic_data == NULL)
+        {
+            return;
+        }
+
+        if ((*bt_hs_spk_handsfree_cb.p_mic_data_add_cb)(p_mic_data, ltch_len))
+        {
+            ret_value = wiced_bt_sco_output_stream(bt_hs_spk_handsfree_cb.p_active_context->sco_index,
+                                                   p_mic_data,
+                                                   (uint16_t) ltch_len);
+
+            if (ret_value != 0)
+            {
+                WICED_BT_TRACE("wiced_bt_sco_output_stream (%d)\n", ret_value);
+            }
+        }
+
+        /* Free memory. */
+        wiced_memory_free((void *) p_mic_data);
     }
 }
 
@@ -179,7 +227,16 @@ static void bt_hs_spk_handsfree_cb_init(void)
     bt_hs_spk_handsfree_cb.app_service.button_handler = bt_audio_hfp_button_event_handler;
 
     // SCO voice path
-    bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_PCM;
+    if (bt_hs_spk_get_audio_sink() == AM_UART)
+    {
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_APP_CB;
+        bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = &bt_hs_spk_handsfree_sco_data_app_callback;
+    }
+    else
+    {
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_PCM;
+        bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = NULL;
+    }
 
     // stream id used for Audio Manager
     bt_hs_spk_handsfree_cb.stream_id = WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
@@ -2814,4 +2871,46 @@ static void bt_hs_spk_handsfree_call_hang_up(handsfree_app_state_t *p_ctx)
     {
         p_ctx->call_hanging_up = WICED_TRUE;
     }
+}
+
+/*
+ * bt_hs_spk_handsfree_sco_voice_path_update
+ *
+ * Update the SCO voice path.
+ *
+ * @param[in]   uart - WICED_TRUE: the SCO data will be route to HCI UART interface
+ *                     WICED_FALSE: the SCO data will be route to PCM interface
+ */
+void bt_hs_spk_handsfree_sco_voice_path_update(wiced_bool_t uart)
+{
+    if (uart)
+    {
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_APP_CB;
+        bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = &bt_hs_spk_handsfree_sco_data_app_callback;
+    }
+    else
+    {
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_PCM;
+        bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = NULL;
+    }
+
+    wiced_bt_sco_setup_voice_path(&bt_hs_spk_handsfree_cb.sco_voice_path);
+}
+
+/**
+ * bt_hs_spk_handsfree_sco_mic_data_add_callback_register
+ *
+ * Register the callback to insert user specific MIC data (PCM) into the HFP audio stream.
+ * The inserted MIC data will be forwarded to the HFP AG.
+ *
+ * In the user callback, the user application need to provide the MIC data (with specific data
+ * length in bytes) and return TRUE.
+ *
+ * If the user application doesn't have MIC data to be sent, the user callback shall return FALSE.
+ *
+ * @param p_cb - user callback to fill the MIC data
+ */
+void bt_hs_spk_handsfree_sco_mic_data_add_callback_register(bt_hs_spk_handsfree_mic_data_add_cb_t *p_cb)
+{
+    bt_hs_spk_handsfree_cb.p_mic_data_add_cb = p_cb;
 }

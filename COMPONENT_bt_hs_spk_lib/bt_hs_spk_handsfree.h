@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -114,6 +114,9 @@ typedef enum
 /* Callback when the sco state is changed. */
 typedef void (bt_hs_spk_sco_state_callback_t)(void);
 
+/** Call back function for pcm MIC data transfer */
+typedef wiced_bool_t (bt_hs_spk_handsfree_mic_data_add_cb_t)(uint8_t *p_data, uint32_t len);
+
 /* data associated with HF_OPEN_EVT */
 typedef struct
 {
@@ -225,6 +228,16 @@ void bt_hs_spk_handsfree_disconnect(wiced_bt_device_address_t bdaddr);
  * Refer to Section 4.25 of Hands-Free Profile 1.7.1
  */
 wiced_result_t bt_hs_spk_handsfree_voice_recognition_activate(void);
+
+/*
+ * bt_hs_spk_handsfree_sco_voice_path_update
+ *
+ * Update the SCO voice path.
+ *
+ * @param[in]   uart - WICED_TRUE: the SCO data will be route to HCI UART interface
+ *                     WICED_FALSE: the SCO data will be route to PCM interface
+ */
+void bt_hs_spk_handsfree_sco_voice_path_update(wiced_bool_t uart);
 
 /**
  * @brief       Process BTM events for SCO management.
@@ -364,3 +377,18 @@ void bt_hs_spk_handsfree_call_session_info_set(bt_hs_spk_handsfree_call_session_
  * @param[out] p_info
  */
 void bt_hs_spk_handsfree_call_session_info_get(bt_hs_spk_handsfree_call_session_info_t *p_info);
+
+/**
+ * bt_hs_spk_handsfree_sco_mic_data_add_callback_register
+ *
+ * Register the callback to insert user specific MIC data (PCM) into the HFP audio stream.
+ * The inserted MIC data will be forwarded to the HFP AG.
+ *
+ * In the user callback, the user application need to provide the MIC data (with specific data
+ * length in bytes) and return TRUE.
+ *
+ * If the user application doesn't have MIC data to be sent, the user callback shall return FALSE.
+ *
+ * @param p_cb - user callback to fill the MIC data
+ */
+void bt_hs_spk_handsfree_sco_mic_data_add_callback_register(bt_hs_spk_handsfree_mic_data_add_cb_t *p_cb);

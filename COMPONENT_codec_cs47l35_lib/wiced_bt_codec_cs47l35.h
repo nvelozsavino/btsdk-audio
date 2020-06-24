@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -75,6 +75,7 @@ typedef enum
 {
     CS47L35_STREAM_SCO = 0,
     CS47L35_STREAM_A2DP,
+    CS47L35_STREAM_CAPTURE,
 } cs47l35_stream_type_t;
 
 /* SCO settings */
@@ -95,6 +96,9 @@ extern codec_reg sco_stream_codec_config[];
 
 extern uint32_t power_up_codec_config_len;
 extern codec_reg power_up_codec_config[];
+
+extern uint32_t a2dp_source_stream_codec_config_len;
+extern codec_reg a2dp_source_stream_codec_config[];
 
 void platform_bham_codec_marley_ctrl_bus_init(void);
 void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, const uint8_t *p_tx_buffer);

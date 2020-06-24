@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -156,6 +156,8 @@
 #define CODEC_SAMPLE_RATE_1                 0x0102
 #define CODEC_IN1L_CONTROL                  0x0310
 #define CODEC_IN1R_CONTROL                  0x0314
+#define CODEC_IN2L_CONTROL                  0x0318
+#define CODEC_IN2R_CONTROL                  0x031C
 
 #define iocfg_fcn_p0_adr                               0x00338400
 
@@ -409,6 +411,11 @@ void wiced_bt_codec_cs47l35_init(cs47l35_stream_type_t stream_type, uint32_t sam
             codec_write_reg_config( sco_stream_codec_config, sco_stream_codec_config_len);
             codec_cs47l35_set_sink(codec_cs47l35_output, 1);
             break;
+
+        case CS47L35_STREAM_CAPTURE:
+            codec_write_reg_config( a2dp_source_stream_codec_config, a2dp_source_stream_codec_config_len);
+            codec_cs47l35_set_sink(codec_cs47l35_output, 1);
+            break;
     }
     codec_cs47l35_set_sample_rate(sample_rate);
 }
@@ -439,6 +446,8 @@ void wiced_bt_codec_cs47l35_set_output_volume(uint8_t left_vol, uint8_t right_vo
     uint16_t left_mute = (left_vol == 0) ? 1 : 0;
     uint16_t right_mute = (right_vol == 0) ? 1 : 0;
 
+    WICED_BT_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
+
     if (left_vol > 0xbf || right_vol > 0xbf)
     {
         return;
@@ -458,6 +467,8 @@ void wiced_bt_codec_cs47l35_set_input_volume(uint8_t left_vol, uint8_t right_vol
 {
     uint16_t reg;
 
+    WICED_BT_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
+
     if (left_vol > 31)
     {
         left_vol = 31;
@@ -468,11 +479,17 @@ void wiced_bt_codec_cs47l35_set_input_volume(uint8_t left_vol, uint8_t right_vol
         right_vol = 31;
     }
 
-    reg = 0x9000 | (left_vol + 0x40);
+    reg = 0x9000 | ((left_vol + 0x40) << 1);
     driver_codec_write16(CODEC_IN1L_CONTROL, reg);
 
-    reg = 0x8000 | (right_vol + 0x40);
+    reg = 0x8000 | ((right_vol + 0x40) << 1);
     driver_codec_write16(CODEC_IN1R_CONTROL, reg);
+
+    reg = 0x8000 | ((left_vol + 0x40) << 1);
+    driver_codec_write16(CODEC_IN2L_CONTROL, reg);
+
+    reg = 0x8000 | ((right_vol + 0x40) << 1);
+    driver_codec_write16(CODEC_IN2R_CONTROL, reg);
 }
 
 void wiced_bt_codec_cs47l35_set_sink(cs47l35_output_t output)
