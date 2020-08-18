@@ -76,6 +76,10 @@
 #define BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS    1
 #endif
 
+#ifndef BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO
+#define BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO      12  /* 15 ms */
+#endif
+
 /* Volume levels passed from the application to Audio Manager should be in the range 0 to 10
  * calculating from 0 to 127 levels to 0 to 10 levels.
  * The mapping between application (absolute) volume level ( 0 ~ 127 ) and Audio Manager ( 0 ~ 10 ) :
@@ -143,6 +147,12 @@ typedef void (BT_HS_SPK_CONTROL_LOCAL_VOLUME_CHANGE_CB)(int32_t am_vol_level, ui
 
 /* Audio streaming source change callback. */
 typedef void (BT_HS_SPK_CONTROL_AUDIO_STREAMING_SRC_CHG_CB(void));
+
+/* Audio Insertion source data exhausted callback. */
+typedef void (BT_HS_SPK_CONTROL_AUDIO_INSERT_SOURCE_DATA_EXHAUSTED_CB)(void);
+
+/* Audio Insertion timeout callback. */
+typedef void (BT_HS_SPK_CONTROL_AUDIO_INSERT_TIMEOUT_CB)(void);
 
 /*****************************************************************************
 **  Data types
@@ -327,6 +337,47 @@ typedef struct bt_hs_spk_control_connection_info
     } acl[BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS];
 } bt_hs_spk_control_connection_info_t;
 
+typedef struct bt_hs_spk_audio_insert_config
+{
+    uint32_t sample_rate;   /* Sampling rate used to play the audio insert data
+                               If the data is inserted over the HFP voice call, the sampling rate
+                               will be set as the sampling rate for SCO PCM data.
+                               If the data is inserted over the A2DP audio streaming, the sampling
+                               rate will be set as the sampling rate for AVDP I2S data.
+                               If the device is in IDLE state (nor HFP voice call nor A2DP audio
+                               streaming), the sampling rate will be set as specified by the user
+                               application.*/
+    uint32_t duration;      /* duration in milliseconds to do the audio insertion
+                               Set to 0 for infinite insertion.
+                               If the audio insertion is set to infinite insertion, the user
+                               application shall either
+                               1. set the stop_insertion_when_source_exhausted to TRUE, or
+                               2. set the p_source_data_exhausted_callback and stop the audio
+                                  insertion in the user application. */
+    int16_t *p_source;   /* pointer to the insertion data */
+    uint32_t len;        /* length of insertion data in bytes */
+
+    BT_HS_SPK_CONTROL_AUDIO_INSERT_SOURCE_DATA_EXHAUSTED_CB *p_source_data_exhausted_callback;
+    wiced_bool_t stop_insertion_when_source_exhausted;   /* TRUE: stop audio insertion if the
+                                                                  source data is exhausted. */
+    wiced_bool_t multiple;   /* TRUE if the audio insertion is for multiple devices. */
+    wiced_bool_t insert_data_after_target_seq_num;   /* Data will be inserted after the target
+                                                        SCO data time sequence number defined in
+                                                        expected_sco_time_seq_num.
+                                                        This is valid only when the data will be
+                                                        inserted over the voice call. */
+    uint32_t expected_sco_time_seq_num;  /* Valid only when the field,
+                                            insert_data_after_target_seq_num is set. */
+    BT_HS_SPK_CONTROL_AUDIO_INSERT_TIMEOUT_CB *p_timeout_callback; /* When the duration is not set to
+                                                                      infinite, and the audio insertion
+                                                                      has not been stopped before timeout,
+                                                                      this callback will be called when
+                                                                      assigned duration runs out. */
+    wiced_bool_t stopped_when_state_is_changed; /* TRUE if the device's state (IDLE, HFP voic call,
+                                                   or A2DP streaming) is changed, the insertion
+                                                   stops automatically. */
+} bt_hs_spk_audio_insert_config_t;
+
 /*****************************************************************************
 **  Global data
 *****************************************************************************/
@@ -340,6 +391,9 @@ extern hci_control_cb_t *hci_control_cb_ptr;
 #endif
 
 extern wiced_bool_t avrcp_profile_role;
+
+extern int16_t sine_wave_mono[32];
+extern int16_t sine_wave_stereo[64];
 
 /*****************************************************************************
 **  Function prototypes
@@ -358,8 +412,6 @@ wiced_app_service_t* get_app_current_service( void );
 wiced_result_t app_set_current_service(wiced_app_service_t *app_service);
 wiced_result_t bt_hs_spk_post_stack_init(bt_hs_spk_control_config_t *p_config);
 wiced_result_t bt_hs_spk_write_eir(bt_hs_spk_eir_config_t *p_config);
-extern wiced_result_t bt_hs_spk_audio_insert_start(uint32_t *p_sample_rate, uint32_t duration_sec);
-extern wiced_result_t bt_hs_spk_audio_insert_stop(void);
 /* common functions */
 
 am_audio_io_device_t bt_hs_spk_get_audio_sink(void);
@@ -480,6 +532,21 @@ wiced_bool_t bt_hs_spk_control_btm_event_handler_link_key(wiced_bt_management_ev
 void bt_hs_spk_control_btm_event_handler_power_management_status(wiced_bt_power_mgmt_notification_t *p_event_data);
 
 /**
+ * bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req
+ *
+ * Handle the BTM event, BTM_BLE_REMOTE_CONNECTION_PARAM_REQ_EVT
+ *
+ * @param: event data
+ *
+ * @return  WICED_BT_CMD_STORED: success
+ *          WICED_BT_ERROR: fail (unhandle or handle but fail)
+ */
+wiced_result_t bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req(
+        wiced_bt_device_address_t bd_addr,
+        uint16_t min_int, uint16_t max_int,
+        uint16_t latency, uint16_t timeout);
+
+/**
  * bt_hs_spk_control_acl_link_policy_sniff_mode_set
  *
  * Set the sniff mode enable/disable for specific/all acl connection(s)
@@ -593,5 +660,30 @@ wiced_bool_t bt_hs_spk_control_misc_data_content_check(uint8_t *p_data, uint32_t
  *              WICED_BT_SUCCESS
  */
 wiced_result_t bt_hs_spk_control_bt_role_set(wiced_bt_device_address_t bdaddr, uint8_t target_role);
+
+/**
+ * bt_hs_spk_control_ble_conn_param_check
+ *
+ * Check BLE connection parameter.
+ * This function can be called before audio stream start. It will update connection interval to
+ * longer period to prevent audio glitch.
+ */
+void bt_hs_spk_control_ble_conn_param_check(void);
+
+/**
+ * bt_hs_spk_audio_insert_start
+ *
+ * Start the audio insertion.
+ * The insertion will be inserted into the voice speaker streaming or the audio streaming depending
+ * on current device's state (IDLE, HFP voice call, or A2DP Streaming).
+ *
+ * @param p_config
+ *
+ * @return  WICED_BT_SUCCESS
+ *          WICED_BT_BUSY
+ *          WICED_BT_BADARG
+ *          WICED_START_ERROR
+ */
+wiced_result_t bt_hs_spk_audio_insert_start(bt_hs_spk_audio_insert_config_t *p_config);
 
 #endif /* BT_HS_SPK_CONTROL_H */

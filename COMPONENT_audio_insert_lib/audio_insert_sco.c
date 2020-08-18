@@ -45,7 +45,11 @@
  * Definitions
  */
 
+#ifdef ENABLE_HFP_SYNC
+#define AUDIO_INSERT_SCO_HOOK_SPK_BUF_SIZE  (WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_SCO * 3)
+#else
 #define AUDIO_INSERT_SCO_HOOK_SPK_BUF_SIZE  (WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_SCO * 2)
+#endif
 
 /*
  * Structure
@@ -57,12 +61,17 @@ typedef struct
     uint16_t spk_buffer_has_data;
     int16_t  spk_buffer[AUDIO_INSERT_SCO_HOOK_SPK_BUF_SIZE];
 
-    wiced_bool_t                    mic;
-    wiced_bool_t                    spk;
-    wiced_bt_audio_insert_data_t    insert_data_mic;
-    wiced_bt_audio_insert_data_t    insert_data_spk;
-    int16_t                         *p_insert_data_mic_index;
-    int16_t                         *p_insert_data_spk_index;
+    uint32_t latest_sco_in_data_time_sequence_number;
+    wiced_bt_audio_insert_advanced_control_config_sco_t adv;
+
+    wiced_bool_t                        mic;
+    wiced_bool_t                        spk;
+    wiced_bt_audio_insert_data_sco_t    insert_data_mic;
+    wiced_bt_audio_insert_data_sco_t    insert_data_spk;
+    int16_t                             *p_insert_data_mic_index;
+    int16_t                             *p_insert_data_spk_index;
+
+    wiced_bool_t                        spk_data_inserted;
 } audio_insert_sco_cb_t;
 
 /*
@@ -95,7 +104,7 @@ void audio_insert_sco_init(void)
 /*
  * audio_insert_sco_start
  */
-void audio_insert_sco_start(wiced_bool_t mic, wiced_bool_t spk, wiced_bt_audio_insert_data_t *p_insert_data)
+void audio_insert_sco_start(wiced_bool_t mic, wiced_bool_t spk, wiced_bt_audio_insert_data_sco_t *p_insert_data)
 {
     /* Check parameter. */
     if ((p_insert_data == NULL) ||
@@ -114,7 +123,7 @@ void audio_insert_sco_start(wiced_bool_t mic, wiced_bool_t spk, wiced_bt_audio_i
 
         memcpy((void *) &audio_insert_sco_cb.insert_data_mic,
                (void *) p_insert_data,
-               sizeof(wiced_bt_audio_insert_data_t));
+               sizeof(wiced_bt_audio_insert_data_sco_t));
 
         audio_insert_sco_cb.p_insert_data_mic_index = audio_insert_sco_cb.insert_data_mic.p_source;
     }
@@ -125,9 +134,18 @@ void audio_insert_sco_start(wiced_bool_t mic, wiced_bool_t spk, wiced_bt_audio_i
 
         memcpy((void *) &audio_insert_sco_cb.insert_data_spk,
                (void *) p_insert_data,
-               sizeof(wiced_bt_audio_insert_data_t));
+               sizeof(wiced_bt_audio_insert_data_sco_t));
 
         audio_insert_sco_cb.p_insert_data_spk_index = audio_insert_sco_cb.insert_data_spk.p_source;
+
+        if (p_insert_data->insert_data_after_target_seq_num)
+        {
+            audio_insert_sco_cb.spk_data_inserted = WICED_FALSE;
+        }
+        else
+        {
+            audio_insert_sco_cb.spk_data_inserted = WICED_TRUE;
+        }
     }
 }
 
@@ -140,7 +158,7 @@ void audio_insert_sco_stop(wiced_bool_t mic, wiced_bool_t spk)
     {
         audio_insert_sco_cb.mic = WICED_FALSE;
 
-        memset((void *) &audio_insert_sco_cb.insert_data_mic, 0, sizeof(wiced_bt_audio_insert_data_t));
+        memset((void *) &audio_insert_sco_cb.insert_data_mic, 0, sizeof(wiced_bt_audio_insert_data_sco_t));
 
         audio_insert_sco_cb.p_insert_data_mic_index = NULL;
     }
@@ -149,9 +167,11 @@ void audio_insert_sco_stop(wiced_bool_t mic, wiced_bool_t spk)
     {
         audio_insert_sco_cb.spk = WICED_FALSE;
 
-        memset((void *) &audio_insert_sco_cb.insert_data_spk, 0, sizeof(wiced_bt_audio_insert_data_t));
+        memset((void *) &audio_insert_sco_cb.insert_data_spk, 0, sizeof(wiced_bt_audio_insert_data_sco_t));
 
         audio_insert_sco_cb.p_insert_data_spk_index = NULL;
+
+        audio_insert_sco_cb.spk_data_inserted = WICED_FALSE;
     }
 }
 
@@ -231,7 +251,12 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
         //WICED_BT_TRACE("S ");
         if (p_data->spk_samples.p_input)
         {
+#ifdef ENABLE_HFP_SYNC
+            uint16_t buf_count;
+#endif
             //WICED_BT_TRACE("SI ");
+            audio_insert_sco_cb.latest_sco_in_data_time_sequence_number = p_data->spk_samples.inserted_silence_len.sco_info.in.timeSeqNum;
+
             if (audio_insert_sco_cb.spk_buffer_has_data & (0x1 << audio_insert_sco_cb.spk_input_index))
             {
                 //WICED_BT_TRACE("SI Buffer overrun");
@@ -253,11 +278,35 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
                     audio_insert_sco_cb.spk_input_index = 0;
                 }
             }
+#ifdef ENABLE_HFP_SYNC
+            /* Pass the current buffer count back to FW */
+            buf_count = audio_insert_sco_cb.spk_buffer_has_data;
+            p_data->spk_samples.inserted_silence_len.value = 0;
+            do
+            {
+                p_data->spk_samples.inserted_silence_len.value += (buf_count & 0x1);
+                buf_count >>= 1;
+            } while (buf_count != 0);
+#endif
         }
 
         if (p_data->spk_samples.p_output)
         {
+            if (audio_insert_sco_cb.spk &&
+                audio_insert_sco_cb.insert_data_spk.insert_data_after_target_seq_num &&
+                (audio_insert_sco_cb.spk_data_inserted == WICED_FALSE))
+            {
+                if (audio_insert_sco_cb.latest_sco_in_data_time_sequence_number >=
+                    audio_insert_sco_cb.insert_data_spk.expected_sco_time_seq_num)
+                {
+                    audio_insert_sco_cb.spk_data_inserted = WICED_TRUE;
+                }
+            }
+
             uint8_t underrun = 0;
+#ifdef ENABLE_HFP_SYNC
+            uint16_t buf_count;
+#endif
             //WICED_BT_TRACE("SO ");
             for (i = 0; i < p_data->spk_samples.sample_count ; i++)
             {
@@ -272,7 +321,7 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
                     sample = 0;
                 }
 
-                if (audio_insert_sco_cb.spk)
+                if (audio_insert_sco_cb.spk_data_inserted)
                 {   /* Insertion data shall be added to the output speaker data. */
                     if (audio_insert_sco_cb.insert_data_spk.overwrite)
                     {
@@ -316,6 +365,10 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
 
             if (underrun)
             {
+#ifdef ENABLE_HFP_SYNC
+                /* Tell FW about the underrun */
+                p_data->spk_samples.sample_count = 0;
+#endif
                 //WICED_BT_TRACE("SI Buffer underrun\n");
             }
             audio_insert_sco_cb.spk_buffer_has_data &= ~(0x1 << audio_insert_sco_cb.spk_output_index);
@@ -332,6 +385,16 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
                     audio_insert_sco_cb.spk_output_index = 0;
                 }
             }
+#ifdef ENABLE_HFP_SYNC
+            /* Pass the current buffer count back to FW */
+            buf_count = audio_insert_sco_cb.spk_buffer_has_data;
+            p_data->spk_samples.inserted_silence_len.value = 0;
+            do
+            {
+                p_data->spk_samples.inserted_silence_len.value += (buf_count & 0x1);
+                buf_count >>= 1;
+            } while (buf_count != 0);
+#endif
         }
         break;
 
@@ -348,4 +411,22 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
         WICED_BT_TRACE("Unknown event:%d\n", event);
         break;
     }
+}
+
+/*
+ * audio_insert_sco_in_data_latest_time_sequence_number_get
+ */
+uint32_t audio_insert_sco_in_data_latest_time_sequence_number_get(void)
+{
+    return audio_insert_sco_cb.latest_sco_in_data_time_sequence_number;
+}
+
+/*
+ * audio_insert_sco_advanced_control_utility_install
+ */
+void audio_insert_sco_advanced_control_utility_install(wiced_bt_audio_insert_advanced_control_config_sco_t *p_config)
+{
+    memcpy((void *) &audio_insert_sco_cb.adv,
+           (void *) p_config,
+           sizeof(wiced_bt_audio_insert_advanced_control_config_sco_t));
 }

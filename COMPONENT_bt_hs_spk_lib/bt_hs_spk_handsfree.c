@@ -82,6 +82,9 @@ typedef struct
     bt_hs_spk_control_config_hfp_t  config;
     BT_HS_SPK_CONTROL_LOCAL_VOLUME_CHANGE_CB    *p_local_volume_change_cb;
     bt_hs_spk_handsfree_mic_data_add_cb_t       *p_mic_data_add_cb;
+
+    /* Current sampling rate used for Audio Manager. */
+    int32_t sampling_rate;
 } bt_hs_spk_handsfree_cb_t;
 
 static void handsfree_event_callback( wiced_bt_hfp_hf_event_t event, wiced_bt_hfp_hf_event_data_t* p_data);
@@ -1164,6 +1167,10 @@ static void bt_hs_spk_handsfree_event_handler_call_setup(handsfree_app_state_t *
         }
         hfp_volume_level = bt_hs_spk_handsfree_speaker_volume_level_get(p_ctx);
 
+        /* Note: Do NOT delete the following debug message.
+                     * This debug message is used for PTS automation. */
+                WICED_BT_TRACE("Set HFP Volume: %d\n",hfp_volume_level);
+
         wiced_bt_hfp_hf_notify_volume(p_ctx->rfcomm_handle,
                                       WICED_BT_HFP_HF_SPEAKER,
                                       hfp_volume_level);
@@ -2224,6 +2231,35 @@ wiced_bool_t bt_hs_spk_handsfree_active_call_session_info_get(bt_hs_spk_handsfre
 }
 
 /**
+ * bt_hs_spk_handsfree_audio_manager_stream_check
+ *
+ * Check if the audio manager for HFP has been started.
+ *
+ * @return  WICED_TRUE: Audio Manager is set for HFP audio connection
+ */
+wiced_bool_t bt_hs_spk_handsfree_audio_manager_stream_check(void)
+{
+    if (bt_hs_spk_handsfree_cb.stream_id != WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
+    {
+        return WICED_TRUE;
+    }
+
+    return WICED_FALSE;
+}
+
+/**
+ * bt_hs_spk_handsfree_audio_manager_sampling_rate_get
+ *
+ * Acquire current Audio Manager sampling rate set for HFP audio connection.
+ *
+ * @return  current sampling rate
+ */
+int32_t bt_hs_spk_handsfree_audio_manager_sampling_rate_get(void)
+{
+    return bt_hs_spk_handsfree_cb.sampling_rate;
+}
+
+/**
  * bt_hs_spk_handsfree_audio_manager_stream_start
  *
  * Start the external codec via Audio Manager
@@ -2277,6 +2313,9 @@ void bt_hs_spk_handsfree_audio_manager_stream_start(audio_config_t *p_audio_conf
     {
         WICED_BT_TRACE("wiced_am_stream_set_param %d failed (%d)\n", AM_MIC_GAIN_LEVEL, status);
     }
+
+    /* Update information. */
+    bt_hs_spk_handsfree_cb.sampling_rate = p_audio_config->sr;
 }
 
 /**

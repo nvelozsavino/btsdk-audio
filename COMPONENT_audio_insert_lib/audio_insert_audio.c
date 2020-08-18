@@ -48,12 +48,13 @@
 //=================================================================================================
 typedef struct
 {
-    wiced_bool_t                    multiple_device;
-    int16_t                         buffer[WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO * 2]; /* 128 Samples (16 bits, Stereo) */
-    uint16_t                        nb_samples;    /* Number of Samples that needs to be filled */
-    uint16_t                        sample_rate;   /* Sample rate for pending audio injection */
-    wiced_bt_audio_insert_data_t    insert_data;
-    int16_t                         *p_insert_data_index;
+    int16_t                             buffer[WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO * 2]; /* 128 Samples (16 bits, Stereo) */
+    uint16_t                            nb_samples;    /* Number of Samples that needs to be filled */
+    uint16_t                            sample_rate;   /* Sample rate for pending audio injection */
+    wiced_bt_audio_insert_data_audio_t  insert_data;
+    int16_t                             *p_insert_data_index;
+
+    wiced_bt_audio_insert_advanced_control_config_audio_t adv;
 } audio_insert_audio_cb_t;
 
 /**************************************************************************************************
@@ -77,7 +78,7 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
 /*
  * audio_insert_audio_start
  */
-void audio_insert_audio_start(wiced_bool_t multiple, uint32_t *p_sample_rate, wiced_bt_audio_insert_data_t *p_insert_data)
+void audio_insert_audio_start(uint32_t *p_sample_rate, wiced_bt_audio_insert_data_audio_t *p_insert_data)
 {
     /* Check parameter. */
     if ((p_insert_data == NULL) ||
@@ -89,8 +90,6 @@ void audio_insert_audio_start(wiced_bool_t multiple, uint32_t *p_sample_rate, wi
         return;
     }
 
-    audio_insert_audio_cb.multiple_device = multiple;
-
     memset((void *) &audio_insert_audio_cb.buffer[0],
            0,
            sizeof(uint16_t) * WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO * 2);
@@ -100,12 +99,16 @@ void audio_insert_audio_start(wiced_bool_t multiple, uint32_t *p_sample_rate, wi
 
     memcpy((void *) &audio_insert_audio_cb.insert_data,
            (void *) p_insert_data,
-           sizeof(wiced_bt_audio_insert_data_t));
+           sizeof(wiced_bt_audio_insert_data_audio_t));
 
     audio_insert_audio_cb.p_insert_data_index = audio_insert_audio_cb.insert_data.p_source;
 
-    if (audio_insert_audio_cb.multiple_device)
-    {   // todo
+    if (audio_insert_audio_cb.insert_data.multiple)
+    {
+        if (audio_insert_audio_cb.adv.p_enable)
+        {
+            (*audio_insert_audio_cb.adv.p_enable)();
+        }
     }
     else
     {
@@ -128,9 +131,12 @@ void audio_insert_audio_start(wiced_bool_t multiple, uint32_t *p_sample_rate, wi
  */
 void audio_insert_audio_stop(void)
 {
-    if (audio_insert_audio_cb.multiple_device)
+    if (audio_insert_audio_cb.insert_data.multiple)
     {
-        // todo
+        if (audio_insert_audio_cb.adv.p_disable)
+        {
+            (*audio_insert_audio_cb.adv.p_disable)();
+        }
     }
     else
     {
@@ -184,13 +190,6 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
     {
     /* i2s aud inject request to fill hardware FIFO with audio data */
     case I2S_AUD_INJECT_EVT_FILL_FIFO:  // WICED_BT_AUDIO_INSERT_EVT_DATA_REQ
-#if 1
-        WICED_BT_TRACE("0x%08X, 0x%08X, %d\n",
-                       p_data->a2dp_samples.p_source,
-                       p_data->a2dp_samples.p_finalOutput,
-                       p_data->a2dp_samples.bufferSize);
-#endif
-
         p_sample_in = p_data->a2dp_samples.p_source;
         p_sample_out = &audio_insert_audio_cb.buffer[0];
 
@@ -288,6 +287,16 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
     default:
         break;
     }
+}
+
+/*
+ * audio_insert_audio_advanced_control_utility_install
+ */
+void audio_insert_audio_advanced_control_utility_install(wiced_bt_audio_insert_advanced_control_config_audio_t *p_config)
+{
+    memcpy((void *) &audio_insert_audio_cb.adv,
+           (void *) p_config,
+           sizeof(wiced_bt_audio_insert_advanced_control_config_audio_t));
 }
 
 //=================================================================================================

@@ -392,3 +392,21 @@ void bt_hs_spk_handsfree_call_session_info_get(bt_hs_spk_handsfree_call_session_
  * @param p_cb - user callback to fill the MIC data
  */
 void bt_hs_spk_handsfree_sco_mic_data_add_callback_register(bt_hs_spk_handsfree_mic_data_add_cb_t *p_cb);
+
+/**
+ * bt_hs_spk_handsfree_audio_manager_stream_check
+ *
+ * Check if the audio manager for HFP has been started.
+ *
+ * @return  WICED_TRUE: Audio Manager is set for HFP audio connection
+ */
+wiced_bool_t bt_hs_spk_handsfree_audio_manager_stream_check(void);
+
+/**
+ * bt_hs_spk_handsfree_audio_manager_sampling_rate_get
+ *
+ * Acquire current Audio Manager sampling rate set for HFP audio connection.
+ *
+ * @return  current sampling rate
+ */
+int32_t bt_hs_spk_handsfree_audio_manager_sampling_rate_get(void);

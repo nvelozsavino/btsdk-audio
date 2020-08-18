@@ -44,120 +44,12 @@ typedef struct
 
 static wiced_bt_audio_insert_cb_t wiced_bt_audio_insert_cb = {0};
 
-#ifdef CYW20721B2
-static wiced_bt_audio_insert_callback_t *wiced_bt_audio_insert_app_cb = NULL;
-
-/*
- * Callback function for I2S Audio Inject Module.
- */
-static void wiced_bt_audio_insert_i2s_aud_inject_callback(i2s_aud_inject_event_t event,
-        i2s_aud_inject_event_data_t *p_data)
-{
-    wiced_bt_audio_insert_event_t wiced_event;
-    wiced_bt_audio_insert_event_data_t wiced_event_data;
-
-    switch (event)
-    {
-    /* i2s aud inject request to fill hardware FIFO with audio data */
-    case I2S_AUD_INJECT_EVT_FILL_FIFO:
-        wiced_event = WICED_BT_AUDIO_INSERT_EVT_DATA_REQ;
-        wiced_event_data.data_req.p_data_in     = p_data->a2dp_samples.p_source;
-        wiced_event_data.data_req.p_data_out    = p_data->a2dp_samples.p_finalOutput;
-        wiced_event_data.data_req.bufferSize    = p_data->a2dp_samples.bufferSize;
-        break;
-
-    /* i2s aud inject indicates the sample rate for the pending audio injection */
-    case I2S_AUD_INJECT_EVT_AUDIO_INFO:
-        wiced_event = WICED_BT_AUDIO_INSERT_EVT_AUDIO_INFO;
-        wiced_event_data.audio_info.nb_samples  = p_data->a2dp_info.bufferSize;
-        wiced_event_data.audio_info.sample_rate = p_data->a2dp_info.sampleRate;
-        break;
-
-    /* Lite Host indicates start SCO audio injection */
-    case LITE_HOST_EVT_START_SCO_INJECT:
-        wiced_event = WICED_BT_AUDIO_INSERT_EVT_SCO;
-        wiced_event_data.sco_info.nb_samples    = p_data->sco_start.bufferSize;
-        wiced_event_data.sco_info.sample_rate   = p_data->sco_start.sampleRate;
-        break;
-    default:
-        return;
-    }
-
-    if (wiced_bt_audio_insert_app_cb)
-    {
-        (*wiced_bt_audio_insert_app_cb)(wiced_event, &wiced_event_data);
-    }
-
-    switch (event)
-    {
-    /* After the audio was inserted, assign p_finalOutput */
-    case I2S_AUD_INJECT_EVT_FILL_FIFO:
-        p_data->a2dp_samples.p_source = wiced_event_data.data_req.p_data_in;
-        p_data->a2dp_samples.p_finalOutput = wiced_event_data.data_req.p_data_out;
-        break;
-    default:
-        break;
-    }
-}
-#endif
-
-/*
- * wiced_bt_audio_insert_init
- */
-#ifdef CYW20721B2
-wiced_result_t wiced_bt_audio_insert_init(wiced_bt_audio_insert_callback_t *p_callback)
-{
-    wiced_result_t status;
-
-    WICED_BT_TRACE("%s: p_callback:0x%x\n", __FUNCTION__, p_callback);
-
-    /* Check parameter. */
-    if (p_callback == NULL)
-    {
-        return WICED_BADARG;
-    }
-
-    /* Call the I2S Audio Insert Init function. */
-    status = i2s_aud_inject_init(&wiced_bt_audio_insert_i2s_aud_inject_callback);
-    if (status != WICED_BT_SUCCESS)
-    {
-        WICED_BT_TRACE("ERR: %s: i2s_aud_inject_init failed status:%d\n", __FUNCTION__, status);
-        return status;
-    }
-
-    /* Save information used later.
-     * wiced_bt_audio_insert_app_cb is a translation layer for B2 version.
-     */
-    wiced_bt_audio_insert_app_cb = p_callback;
-
-    return status;
-}
-#else
-wiced_result_t wiced_bt_audio_insert_init(wiced_bt_audio_insert_callback_t *p_callback)
-{
-    wiced_result_t status;
-
-    WICED_BT_TRACE("%s: p_callback:0x%x\n", __FUNCTION__, p_callback);
-
-    /* Call the I2S Audio Insert Init function.
-     * Note that we can pass the application's callback function because the FW and Wiced
-     * APIs use the exact definitions (definitions and structures)
-     */
-    status = i2s_aud_inject_init((i2s_aud_inject_callback_t *)p_callback);
-    if (status != WICED_BT_SUCCESS)
-        WICED_BT_TRACE("ERR: %s: i2s_aud_inject_init failed status:%d\n", __FUNCTION__, status);
-
-    return status;
-}
-#endif
-
-#if 1
 /**
- * wiced_bt_audio_insert_init_new
+ * wiced_bt_audio_insert_init
  *
  * Initialize the WiCED BT Audio Insertion Module.
  */
-void wiced_bt_audio_insert_init_new(void)
+void wiced_bt_audio_insert_init(void)
 {
     /* Check state to prevent duplicated initialization. */
     if (wiced_bt_audio_insert_cb.initialized)
@@ -173,7 +65,6 @@ void wiced_bt_audio_insert_init_new(void)
 
     wiced_bt_audio_insert_cb.initialized = WICED_TRUE;
 }
-#endif
 
 /**
  * wiced_bt_audio_insert_stop
@@ -225,24 +116,48 @@ void wiced_bt_audio_insert_start(wiced_bt_audio_insert_config_t *p_config)
     case WICED_BT_AUDIO_INSERT_TYPE_SCO_MIC:
         audio_insert_sco_start(WICED_TRUE,
                                WICED_FALSE,
-                               &p_config->insert_data);
+                               &p_config->insert_data.sco);
         break;
 
     /* Insertion data will be added in the Voice Call Speaker data. */
     case WICED_BT_AUDIO_INSERT_TYPE_SCO_SPK:
         audio_insert_sco_start(WICED_FALSE,
                                WICED_TRUE,
-                               &p_config->insert_data);
+                               &p_config->insert_data.sco);
         break;
 
     /* Insertion data will be added in the audio data (streaming or playback). */
     case WICED_BT_AUDIO_INSERT_TYPE_AUDIO:
-        audio_insert_audio_start(p_config->multiple_device,
-                                 p_config->p_sample_rate,
-                                 &p_config->insert_data);
+        audio_insert_audio_start(p_config->p_sample_rate,
+                                 &p_config->insert_data.audio);
         break;
 
     default:
         break;
     }
+}
+
+/**
+ * wiced_bt_audio_insert_sco_in_data_latest_time_sequence_number_get
+ *
+ * Acquire the latest time sequence number of incoming SCO data.
+ *
+ * @return lastest sco in data time sequence number
+ */
+uint32_t wiced_bt_audio_insert_sco_in_data_latest_time_sequence_number_get(void)
+{
+    return audio_insert_sco_in_data_latest_time_sequence_number_get();
+}
+
+/**
+ * wiced_bt_audio_insert_advanced_control_utility_install
+ *
+ * Utilities used to install the advanced audio insert (multiple device audio insertion) utilities.
+ *
+ * @param p_config - configuration
+ */
+void wiced_bt_audio_insert_advanced_control_utility_install(wiced_bt_audio_insert_advanced_control_config_t *p_config)
+{
+    audio_insert_sco_advanced_control_utility_install(&p_config->sco);
+    audio_insert_audio_advanced_control_utility_install(&p_config->audio);
 }

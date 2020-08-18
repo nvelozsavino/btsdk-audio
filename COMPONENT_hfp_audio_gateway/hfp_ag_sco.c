@@ -100,7 +100,10 @@ void hfp_ag_sco_create( hfp_ag_session_cb_t *p_scb, BOOLEAN is_orig )
                                         BTM_SCO_PKT_TYPES_MASK_NO_3_EV3 |
                                         BTM_SCO_PKT_TYPES_MASK_NO_2_EV5 |
                                         BTM_SCO_PKT_TYPES_MASK_NO_3_EV5 );
+                WICED_BT_TRACE("Use WBS\n");
             }
+            else
+                WICED_BT_TRACE("Use NBS\n");
 #endif
             /* Igf setup fails, fall back to regular SCO */
             p_scb->retry_with_sco_only = WICED_TRUE;

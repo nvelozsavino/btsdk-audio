@@ -60,6 +60,7 @@ typedef struct
     wiced_bool_t audio_insert_active;
     wiced_timer_t timer;
     wiced_bool_t sco_hook_registered;
+    bt_hs_spk_audio_insert_config_t *p_config;
 } bt_hs_spk_audio_insert_cb_t;
 
 
@@ -68,22 +69,15 @@ typedef struct
  */
 static bt_hs_spk_audio_insert_cb_t bt_hs_spk_audio_insert_cb;
 
-static const int16_t sine_wave_mono[32] =
+int16_t sine_wave_mono[32] =
 {
-#if 1
     0x0000, 0x18f8, 0x30f8, 0x471c, 0x5a82, 0x6a6d, 0x7641, 0x7d89,
     0x7fff, 0x7d89, 0x7641, 0x6a6d, 0x5a82, 0x471c, 0x30f8, 0x18f8,
     0x0000, 0xe708, 0xcf05, 0xb8e4, 0xa57e, 0x9593, 0x898f, 0x8277,
     0x8001, 0x8277, 0x898f, 0x9593, 0xa57e, 0xb8e4, 0xcf05, 0xe708
-#else
-        0, 6392, 12539, 18204, 23170, 27245, 30273, 32137,
-        32767, 32137, 30273, 27245, 23170, 18204, 12539, 6392,
-        0, -6392, -12539, -18204, -23170, -27245, -30273, -32137,
-        -32767, -32137, -30273, -27245, -23170, -18204, -12539, -6392
-#endif
 };
 
-static const int16_t sine_wave_stereo[64] =
+int16_t sine_wave_stereo[64] =
 {
     0x0000, 0x0000, 0x18f8, 0x18f8, 0x30f8, 0x30f8, 0x471c, 0x471c,
     0x5a82, 0x5a82, 0x6a6d, 0x6a6d, 0x7641, 0x7641, 0x7d89, 0x7d89,
@@ -98,9 +92,10 @@ static const int16_t sine_wave_stereo[64] =
 /*
  * Local functions
  */
-static void bt_hs_spk_audio_insert_timer_callback(uint32_t param);
-static void bt_hs_spk_audio_insert_sco_event_callback(void);
 static void bt_hs_spk_audio_insert_a2dp_status_callback(void);
+static void bt_hs_spk_audio_insert_sco_event_callback(void);
+static void bt_hs_spk_audio_insert_source_data_exhausted_handler(wiced_bt_audio_insert_type_t type);
+static void bt_hs_spk_audio_insert_timer_callback(uint32_t param);
 
 /*
  * bt_hs_spk_audio_insert_init
@@ -114,20 +109,14 @@ wiced_result_t bt_hs_spk_audio_insert_init(void)
     memset(&bt_hs_spk_audio_insert_cb, 0, sizeof(bt_hs_spk_audio_insert_cb));
 
     status = wiced_init_timer(&bt_hs_spk_audio_insert_cb.timer,
-            bt_hs_spk_audio_insert_timer_callback, 0, WICED_SECONDS_TIMER);
+            bt_hs_spk_audio_insert_timer_callback, 0, WICED_MILLI_SECONDS_TIMER);
     if (status != WICED_BT_SUCCESS)
     {
         APP_TRACE_ERR("wiced_init_timer failed status:%d\n", status);
         return status;
     }
 
-    wiced_bt_audio_insert_init_new();
-
-    /* Register a SCO Status callback (to know when SCO is active/inactive) */
-    bt_audio_hfp_register_sco_event(bt_hs_spk_audio_insert_sco_event_callback);
-
-    /* Register an A2DP Stream Status callback (to know when A2DP Stream is active/inactive) */
-    bt_hs_spk_audio_a2dp_status_register(bt_hs_spk_audio_insert_a2dp_status_callback);
+    wiced_bt_audio_insert_init();
 
     return status;
 }
@@ -135,41 +124,94 @@ wiced_result_t bt_hs_spk_audio_insert_init(void)
 static void bt_hs_spk_audio_insert_start_sco(void)
 {
     wiced_bt_audio_insert_config_t audio_insert_config = {0};
+    wiced_result_t status;
+    bt_hs_spk_handsfree_active_call_session_info_t call_session_info;
 
-    audio_insert_config.type                                                = WICED_BT_AUDIO_INSERT_TYPE_SCO_SPK;
-    audio_insert_config.multiple_device                                     = WICED_FALSE;
-    audio_insert_config.p_sample_rate                                       = 0;
-    audio_insert_config.insert_data.p_source                                = (int16_t *) sine_wave_mono;
-    audio_insert_config.insert_data.len                                     = sizeof(sine_wave_mono);
-    audio_insert_config.insert_data.overwrite                               = WICED_TRUE;
-    audio_insert_config.insert_data.loop                                    = WICED_TRUE;
-    audio_insert_config.insert_data.volume_reduce_factor_insert             = 10;
-    audio_insert_config.insert_data.volume_reduce_factor_original           = 1;
-    audio_insert_config.insert_data.p_source_data_exhausted_callback        = NULL;
-    audio_insert_config.insert_data.stop_insertion_when_source_exhausted    = WICED_FALSE;
+    audio_insert_config.type                                                    = WICED_BT_AUDIO_INSERT_TYPE_SCO_SPK;
+    audio_insert_config.p_sample_rate                                           = 0;
+    audio_insert_config.insert_data.sco.p_source                                = bt_hs_spk_audio_insert_cb.p_config->p_source;
+    audio_insert_config.insert_data.sco.len                                     = bt_hs_spk_audio_insert_cb.p_config->len;
+    audio_insert_config.insert_data.sco.overwrite                               = WICED_FALSE;
+    audio_insert_config.insert_data.sco.loop                                    = WICED_TRUE;
+    audio_insert_config.insert_data.sco.volume_reduce_factor_insert             = 10;
+    audio_insert_config.insert_data.sco.volume_reduce_factor_original           = 1;
+    if (bt_hs_spk_audio_insert_cb.p_config->p_source_data_exhausted_callback)
+    {
+        audio_insert_config.insert_data.sco.p_source_data_exhausted_callback    = &bt_hs_spk_audio_insert_source_data_exhausted_handler;
+    }
+
+    audio_insert_config.insert_data.sco.stop_insertion_when_source_exhausted    = bt_hs_spk_audio_insert_cb.p_config->stop_insertion_when_source_exhausted;
+    audio_insert_config.insert_data.sco.insert_data_after_target_seq_num        = bt_hs_spk_audio_insert_cb.p_config->insert_data_after_target_seq_num;
+    audio_insert_config.insert_data.sco.expected_sco_time_seq_num               = bt_hs_spk_audio_insert_cb.p_config->expected_sco_time_seq_num;
+
+    if (bt_hs_spk_audio_insert_cb.p_config->duration)
+    {
+        status = wiced_start_timer(&bt_hs_spk_audio_insert_cb.timer,
+                                   bt_hs_spk_audio_insert_cb.p_config->duration);
+
+        if (status != WICED_SUCCESS)
+        {
+            APP_TRACE_ERR("wiced_start_timer failed status:%d\n", status);
+            return;
+        }
+    }
 
     wiced_bt_audio_insert_start(&audio_insert_config);
 
     bt_hs_spk_audio_insert_cb.sco_hook_registered = WICED_TRUE;
     bt_hs_spk_audio_insert_cb.audio_insert_active = WICED_TRUE;
+
+    /* Inform the application with the sampling rate. */
+    if (bt_hs_spk_handsfree_active_call_session_info_get(&call_session_info))
+    {
+        if (call_session_info.wide_band)
+        {
+            bt_hs_spk_audio_insert_cb.p_config->sample_rate = AM_PLAYBACK_SR_16K;
+        }
+        else
+        {
+            bt_hs_spk_audio_insert_cb.p_config->sample_rate = AM_PLAYBACK_SR_8K;
+        }
+    }
+    else
+    {
+        /* Something is wrong. Use wide-band value. */
+        bt_hs_spk_audio_insert_cb.p_config->sample_rate = AM_PLAYBACK_SR_16K;
+    }
 }
 
-static void bt_hs_spk_audio_insert_start_audio(uint32_t *p_sample_rate)
+static void bt_hs_spk_audio_insert_start_audio(void)
 {
     wiced_bt_audio_insert_config_t audio_insert_config = {0};
     audio_config_t audio_config;
+    wiced_result_t status;
 
-    audio_insert_config.type                                                = WICED_BT_AUDIO_INSERT_TYPE_AUDIO;
-    audio_insert_config.multiple_device                                     = WICED_FALSE;
-    audio_insert_config.p_sample_rate                                       = p_sample_rate;
-    audio_insert_config.insert_data.p_source                                = (int16_t *) sine_wave_stereo;
-    audio_insert_config.insert_data.len                                     = sizeof(sine_wave_stereo);
-    audio_insert_config.insert_data.overwrite                               = WICED_FALSE;
-    audio_insert_config.insert_data.loop                                    = WICED_TRUE;
-    audio_insert_config.insert_data.volume_reduce_factor_insert             = 10;
-    audio_insert_config.insert_data.volume_reduce_factor_original           = 4;
-    audio_insert_config.insert_data.p_source_data_exhausted_callback        = NULL;
-    audio_insert_config.insert_data.stop_insertion_when_source_exhausted    = WICED_FALSE;
+    audio_insert_config.type                                                    = WICED_BT_AUDIO_INSERT_TYPE_AUDIO;
+    audio_insert_config.p_sample_rate                                           = &bt_hs_spk_audio_insert_cb.p_config->sample_rate;
+    audio_insert_config.insert_data.audio.p_source                              = bt_hs_spk_audio_insert_cb.p_config->p_source;
+    audio_insert_config.insert_data.audio.len                                   = bt_hs_spk_audio_insert_cb.p_config->len;
+    audio_insert_config.insert_data.audio.overwrite                             = WICED_FALSE;
+    audio_insert_config.insert_data.audio.loop                                  = WICED_TRUE;
+    audio_insert_config.insert_data.audio.volume_reduce_factor_insert           = 10;
+    audio_insert_config.insert_data.audio.volume_reduce_factor_original         = 4;
+    if (bt_hs_spk_audio_insert_cb.p_config->p_source_data_exhausted_callback)
+    {
+        audio_insert_config.insert_data.audio.p_source_data_exhausted_callback  = &bt_hs_spk_audio_insert_source_data_exhausted_handler;
+    }
+    audio_insert_config.insert_data.audio.stop_insertion_when_source_exhausted  = bt_hs_spk_audio_insert_cb.p_config->stop_insertion_when_source_exhausted;
+    audio_insert_config.insert_data.audio.multiple                              = bt_hs_spk_audio_insert_cb.p_config->multiple;
+
+    if (bt_hs_spk_audio_insert_cb.p_config->duration)
+    {
+        status = wiced_start_timer(&bt_hs_spk_audio_insert_cb.timer,
+                                   bt_hs_spk_audio_insert_cb.p_config->duration);
+
+        if (status != WICED_SUCCESS)
+        {
+            APP_TRACE_ERR("wiced_start_timer failed status:%d\n", status);
+            return;
+        }
+    }
 
     wiced_bt_audio_insert_start(&audio_insert_config);
 
@@ -177,11 +219,11 @@ static void bt_hs_spk_audio_insert_start_audio(uint32_t *p_sample_rate)
     if (bt_hs_spk_audio_streaming_check(NULL) != WICED_ALREADY_CONNECTED)
     {
         audio_config.sr = *audio_insert_config.p_sample_rate;
-        audio_config.channels = 1;
+        audio_config.channels = 2;
         audio_config.mic_gain = 0;
         audio_config.bits_per_sample = 16;
         audio_config.volume = 5;
-        audio_config.sink = AM_HEADPHONES;
+        audio_config.sink = bt_hs_spk_get_audio_sink();
 
         bt_hs_spk_audio_audio_manager_stream_start(&audio_config);
     }
@@ -189,10 +231,21 @@ static void bt_hs_spk_audio_insert_start_audio(uint32_t *p_sample_rate)
     bt_hs_spk_audio_insert_cb.audio_insert_active = WICED_TRUE;
 }
 
-/*
+/**
  * bt_hs_spk_audio_insert_start
+ *
+ * Start the audio insertion.
+ * The insertion will be inserted into the voice speaker streaming or the audio streaming depending
+ * on current device's state (IDLE, HFP voice call, or A2DP Streaming).
+ *
+ * @param p_config
+ *
+ * @return  WICED_BT_SUCCESS
+ *          WICED_BT_BUSY
+ *          WICED_BT_BADARG
+ *          WICED_START_ERROR
  */
-wiced_result_t bt_hs_spk_audio_insert_start(uint32_t *p_sample_rate, uint32_t duration_sec)
+wiced_result_t bt_hs_spk_audio_insert_start(bt_hs_spk_audio_insert_config_t *p_config)
 {
     wiced_result_t status;
     wiced_bt_audio_insert_config_t audio_insert_config = {0};
@@ -201,36 +254,38 @@ wiced_result_t bt_hs_spk_audio_insert_start(uint32_t *p_sample_rate, uint32_t du
     if (bt_hs_spk_audio_insert_cb.audio_insert_active)
     {
         APP_TRACE_ERR("Audio Insert already active\n");
+        return WICED_BT_BUSY;
+    }
+
+    /* Check parameters. */
+    if ((p_config == NULL) ||
+        (p_config->p_source == NULL) ||
+        (p_config->len == 0))
+    {
         return WICED_BT_BADARG;
     }
 
-    if (duration_sec == 0)
-    {
-        APP_TRACE_ERR("duration_sec is 0\n");
-        return WICED_BT_BADARG;
-    }
+    /* Save information. */
+    bt_hs_spk_audio_insert_cb.p_config = p_config;
 
-    if (p_sample_rate == NULL)
-    {
-        APP_TRACE_ERR("p_sample_rate cannot be NULL\n");
-        return WICED_BT_BADARG;
-    }
-
-    status = wiced_start_timer(&bt_hs_spk_audio_insert_cb.timer, duration_sec);
-    if (status != WICED_BT_SUCCESS)
-    {
-        APP_TRACE_ERR("wiced_start_timer failed status:%d\n", status);
-        return status;
-    }
-
-    /* If SCO is active, the Audio Insert must be done via the SCO Hook */
-    if (bt_hs_spk_handsfree_sco_connection_check(NULL) == WICED_TRUE)
+    /* Utilize the audio manager status to identify current device state
+     * (HFP voice call, A2DP streaming, or IDLE). */
+    if (bt_hs_spk_handsfree_audio_manager_stream_check())
     {
         bt_hs_spk_audio_insert_start_sco();
     }
     else
     {
-        bt_hs_spk_audio_insert_start_audio(p_sample_rate);
+        bt_hs_spk_audio_insert_start_audio();
+    }
+
+    if (p_config->stopped_when_state_is_changed)
+    {
+        /* Register a SCO Status callback (to know when SCO is active/inactive) */
+        bt_audio_hfp_register_sco_event(bt_hs_spk_audio_insert_sco_event_callback);
+
+        /* Register an A2DP Stream Status callback (to know when A2DP Stream is active/inactive) */
+        bt_hs_spk_audio_a2dp_status_register(bt_hs_spk_audio_insert_a2dp_status_callback);
     }
 
     return WICED_BT_SUCCESS;
@@ -241,8 +296,6 @@ wiced_result_t bt_hs_spk_audio_insert_start(uint32_t *p_sample_rate, uint32_t du
  */
 wiced_result_t bt_hs_spk_audio_insert_stop(void)
 {
-    wiced_result_t status;
-
     APP_TRACE_DBG("\n");
 
     if (bt_hs_spk_audio_insert_cb.audio_insert_active == WICED_FALSE)
@@ -253,11 +306,13 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
 
     bt_hs_spk_audio_insert_cb.audio_insert_active = WICED_FALSE;
 
-    status = wiced_stop_timer(&bt_hs_spk_audio_insert_cb.timer);
-    if (status != WICED_BT_SUCCESS)
+    if (wiced_is_timer_in_use(&bt_hs_spk_audio_insert_cb.timer))
     {
-        APP_TRACE_ERR("wiced_stop_timer failed\n");
-        return WICED_BT_ERROR;
+        if (wiced_stop_timer(&bt_hs_spk_audio_insert_cb.timer) != WICED_BT_SUCCESS)
+        {
+            APP_TRACE_ERR("wiced_stop_timer failed\n");
+            return WICED_BT_ERROR;
+        }
     }
 
     if (bt_hs_spk_audio_insert_cb.sco_hook_registered)
@@ -267,7 +322,6 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
         wiced_bt_audio_insert_stop(WICED_BT_AUDIO_INSERT_TYPE_SCO_SPK);
 
         bt_hs_spk_audio_insert_cb.sco_hook_registered = WICED_FALSE;
-        status = WICED_BT_SUCCESS;
     }
     else
     {
@@ -282,7 +336,38 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
         }
     }
 
-    return status;
+    /* De-Register a SCO Status callback. */
+    bt_audio_hfp_register_sco_event(NULL);
+
+    /* De-Register an A2DP Stream Status callback. */
+    bt_hs_spk_audio_a2dp_status_register(NULL);
+
+    return WICED_BT_SUCCESS;
+}
+
+/*
+ * bt_hs_spk_audio_insert_state_check
+ *
+ * Check if the audio insertion is ongoing
+ *
+ * @param[in]   sco: Set to TRUE to check the SCO audio insert state
+ *
+ * @return  WICED_TRUE: audio insertion is ongoing
+ */
+wiced_bool_t bt_hs_spk_audio_insert_state_check(wiced_bool_t sco)
+{
+    if (bt_hs_spk_audio_insert_cb.audio_insert_active == WICED_FALSE)
+    {
+        return WICED_FALSE;
+    }
+
+    if (sco)
+    {
+        if (bt_hs_spk_audio_insert_cb.sco_hook_registered == WICED_FALSE)
+            return WICED_FALSE;
+    }
+
+    return WICED_TRUE;
 }
 
 /*
@@ -291,6 +376,12 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
 static void bt_hs_spk_audio_insert_timer_callback(uint32_t param)
 {
     bt_hs_spk_audio_insert_stop();
+
+    /* Inform user application. */
+    if (bt_hs_spk_audio_insert_cb.p_config->p_timeout_callback)
+    {
+        (*bt_hs_spk_audio_insert_cb.p_config->p_timeout_callback)();
+    }
 }
 
 /*
@@ -316,5 +407,16 @@ static void bt_hs_spk_audio_insert_a2dp_status_callback(void)
     {
         APP_TRACE_DBG("Audio Insert active. Stop it\n");
         bt_hs_spk_audio_insert_stop();
+    }
+}
+
+/*
+ * bt_hs_spk_audio_insert_source_data_exhausted_handler
+ */
+static void bt_hs_spk_audio_insert_source_data_exhausted_handler(wiced_bt_audio_insert_type_t type)
+{
+    if (bt_hs_spk_audio_insert_cb.p_config->p_source_data_exhausted_callback)
+    {
+        (*bt_hs_spk_audio_insert_cb.p_config->p_source_data_exhausted_callback)();
     }
 }

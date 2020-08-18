@@ -42,6 +42,7 @@
 #include "wiced_bt_avrc_ct.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_event.h"
+#include "wiced_bt_l2c.h"
 #include "wiced_timer.h"
 #include "bt_hs_spk_control.h"
 #include "wiced_platform.h"
@@ -66,6 +67,8 @@
 #ifndef BT_HS_SPK_CONTROL_LINK_KEY_COUNT
 #define BT_HS_SPK_CONTROL_LINK_KEY_COUNT    8  // # of link keys stored in the NVRAM
 #endif
+
+#define BLE_CONN_PARAM_CHECK_DURATION_MS     500
 
 /*
  * Reconnect State
@@ -110,9 +113,10 @@ typedef struct
 
     struct
     {
-        wiced_bool_t    connected;
-        uint8_t         reason;     // disconnection reason
-        uint8_t         last_disconnection_reason;
+        wiced_bt_device_address_t   bdaddr;
+        wiced_bool_t                connected;
+        uint8_t                     reason;     // disconnection reason
+        uint8_t                     last_disconnection_reason;
     } le;
 } bt_hs_spk_control_connection_status_t;
 
@@ -161,6 +165,7 @@ typedef struct
     BT_HS_SPK_CONTROL_LOCAL_VOLUME_CHANGE_CB    *p_local_vol_chg_cb;
     BT_HS_SPK_CONTROL_BT_VISIBILITY_CHANGE_CB   *p_bt_visibility_chg_cb;
     wiced_timer_t                               reconnect_reset_timer;
+    wiced_timer_t                               ble_conn_param_check_timer;
 } bt_hs_spk_control_cb_t;
 
 /******************************************************
@@ -190,11 +195,31 @@ static void         bt_hs_spk_control_reconnect_out_of_range(void);
 static void         bt_hs_spk_control_reconnect_power_failure(void);
 static void         bt_hs_spk_control_reconnect_timeout_callback(uint32_t param);
 
+static void         bt_hs_spk_control_ble_conn_param_check_timer_callback(uint32_t param);
+
 extern wiced_result_t   BTM_SetPacketTypes (wiced_bt_device_address_t remote_bda, UINT16 pkt_types);
 
 /******************************************************
  *               Function Definitions
  ******************************************************/
+
+/* weak function of wiced_bt_l2cap_reply_ble_remote_conn_params_req for compability */
+__attribute__((weak))
+wiced_bool_t wiced_bt_l2cap_reply_ble_remote_conn_params_req(
+        wiced_bt_device_address_t bd_addr,
+        wiced_bool_t accept, uint16_t min_int, uint16_t max_int, uint16_t latency,
+        uint16_t timeout)
+{
+    return WICED_FALSE;
+}
+
+/* weak function of wiced_bt_ble_get_connection_parameters for compability */
+__attribute__((weak))
+wiced_result_t wiced_bt_ble_get_connection_parameters(wiced_bt_device_address_t bda,
+        wiced_bt_ble_conn_params_t *p_conn_parameters)
+{
+    return WICED_BT_ERROR;
+}
 
 /**
  * bt_hs_spk_control_misc_data_content_check
@@ -551,9 +576,19 @@ void bt_hs_spk_control_connection_status_callback (wiced_bt_device_address_t bd_
             }
             else
             {   // disconnected -> connected
+                memcpy((void *) bt_hs_spk_control_cb.conn_status.le.bdaddr,
+                        (void *) bd_addr,
+                        sizeof(wiced_bt_device_address_t));
                 bt_hs_spk_control_cb.conn_status.le.connected                   = is_connected;
                 bt_hs_spk_control_cb.conn_status.le.last_disconnection_reason   = bt_hs_spk_control_cb.conn_status.le.reason;
                 bt_hs_spk_control_cb.conn_status.le.reason                       = reason;
+
+                if (bt_hs_spk_audio_streaming_check(NULL) == WICED_ALREADY_CONNECTED)
+                {
+                    /* trigger a timer to check for connection parameter if audio is streaming */
+                    wiced_start_timer(&bt_hs_spk_control_cb.ble_conn_param_check_timer,
+                            BLE_CONN_PARAM_CHECK_DURATION_MS);
+                }
             }
         }
         break;
@@ -742,6 +777,16 @@ wiced_result_t bt_hs_spk_post_stack_init(bt_hs_spk_control_config_t *p_config)
         WICED_BT_TRACE("Err: fail to initialize reconnect reset timer (%d)\n", result);
     }
 
+    /* Initialize the reconnect reset timer. */
+    result = wiced_init_timer(&bt_hs_spk_control_cb.ble_conn_param_check_timer,
+                              bt_hs_spk_control_ble_conn_param_check_timer_callback,
+                              0,
+                              WICED_MILLI_SECONDS_TIMER);
+    if (result != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("Err: fail to initialize LE conn param check timer (%d)\n", result);
+    }
+
     return result;
 }
 
@@ -887,6 +932,14 @@ void bt_hs_spk_set_audio_sink(am_audio_io_device_t sink)
  */
 wiced_bool_t bt_hs_spk_control_reconnect_state_get(void)
 {
+    if (!bt_hs_spk_control_cb.reconnect.connecting)
+    {
+        /* stop ble_conn_param_check timer */
+        if (wiced_is_timer_in_use(&bt_hs_spk_control_cb.ble_conn_param_check_timer))
+        {
+            wiced_stop_timer(&bt_hs_spk_control_cb.ble_conn_param_check_timer);
+        }
+    }
     return bt_hs_spk_control_cb.reconnect.connecting;
 }
 
@@ -1928,6 +1981,48 @@ void bt_hs_spk_control_btm_event_handler_power_management_status(wiced_bt_power_
 }
 
 /**
+ * bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req
+ *
+ * Handle the BTM event, BTM_BLE_REMOTE_CONNECTION_PARAM_REQ_EVT
+ *
+ * @param p_event: event data
+ *
+ * @return  WICED_BT_CMD_STORED: success
+ *          WICED_BT_ERROR: fail
+ */
+wiced_result_t bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req(
+        wiced_bt_device_address_t bd_addr,
+        uint16_t min_int, uint16_t max_int,
+        uint16_t latency, uint16_t timeout)
+{
+    wiced_bool_t accept = WICED_TRUE;
+
+    WICED_BT_TRACE("BTM_BLE_REMOTE_CONNECTION_PARAM_REQ_EVT");
+    WICED_BT_TRACE(" (bdaddr:%B min_int:%d max_int:%d latency:%d timeout:%d)\n",
+            bd_addr, min_int, max_int, latency, timeout);
+
+    /* if audio is streaming and the LE connection interval is too short */
+    if ((bt_hs_spk_audio_streaming_check(NULL) == WICED_ALREADY_CONNECTED)
+            && (min_int < BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO))
+    {
+        /* reject the connection parameter request */
+        accept = WICED_FALSE;
+        WICED_BT_TRACE("Too short interval(%d/%d), reject\n", min_int,
+                BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO);
+    }
+
+    /* send reply */
+    if (!wiced_bt_l2cap_reply_ble_remote_conn_params_req(
+                bd_addr, accept, min_int, max_int, latency, timeout))
+    {
+        return WICED_BT_ERROR;
+    }
+
+    /* tell stack this event is already handled by application */
+    return WICED_BT_CMD_STORED;
+}
+
+/**
  * bt_hs_spk_control_bt_power_mode_set_exclusive
  *
  * Set the BT power mode except for the target device's link
@@ -2529,4 +2624,63 @@ wiced_result_t bt_hs_spk_control_bt_role_set(wiced_bt_device_address_t bdaddr, u
     }
 
     return WICED_BT_SUCCESS;
+}
+
+/**
+ * bt_hs_spk_control_ble_conn_param_check
+ *
+ * Check BLE connection parameter.
+ * This function can be called before audio stream start. It will update connection interval to
+ * longer period to prevent audio glitch.
+ */
+void bt_hs_spk_control_ble_conn_param_check(void)
+{
+    wiced_bt_ble_conn_params_t conn_parameters;
+
+    if (!bt_hs_spk_control_cb.conn_status.le.connected)
+    {
+        /* no LE connection */
+        return;
+    }
+
+    if (wiced_bt_ble_get_connection_parameters(
+                bt_hs_spk_control_cb.conn_status.le.bdaddr,
+                &conn_parameters) != WICED_BT_SUCCESS)
+    {
+        /* fail to get connection parameters */
+        return;
+    }
+
+    if (conn_parameters.conn_interval
+            >= BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO)
+    {
+        /* no need to change connection parameter */
+        return;
+    }
+
+    WICED_BT_TRACE("%s update LE (%B) conn_interval from %d to %d\n", __FUNCTION__,
+            bt_hs_spk_control_cb.conn_status.le.bdaddr,
+            conn_parameters.conn_interval,
+            BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO);
+    wiced_bt_l2cap_update_ble_conn_params(
+            bt_hs_spk_control_cb.conn_status.le.bdaddr,
+            BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO,
+            BT_HS_SPK_CONTROL_BLE_MIN_CONN_INTERVAL_DURING_AUDIO,
+            conn_parameters.conn_latency,
+            conn_parameters.supervision_timeout);
+
+    return;
+}
+
+/*
+ * bt_hs_spk_control_ble_conn_param_check_timer_callback
+ *
+ * LE Connection Parameter check timer callback
+ */
+void bt_hs_spk_control_ble_conn_param_check_timer_callback(uint32_t param)
+{
+    if (bt_hs_spk_audio_streaming_check(NULL) == WICED_ALREADY_CONNECTED)
+    {
+        bt_hs_spk_control_ble_conn_param_check();
+    }
 }

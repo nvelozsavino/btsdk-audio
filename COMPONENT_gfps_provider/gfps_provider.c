@@ -2047,8 +2047,11 @@ void wiced_bt_gfps_provider_enable(void)
     // Random Salt update timer
     if (gfps_provider_cb.conf.account_key_filter_generate_random)
     {
-        wiced_start_timer(&gfps_provider_cb.random_salt_update_timer,
-                          GFPS_PROVIDER_RANDOM_SALT_UPDATE_TIME);
+        if (wiced_start_timer(&gfps_provider_cb.random_salt_update_timer,
+                              GFPS_PROVIDER_RANDOM_SALT_UPDATE_TIME) != WICED_BT_SUCCESS)
+        {
+            GFPS_TRACE("Random Salt update timer fail\n");
+        }
     }
 
     /* Start the BLE advertisement. */

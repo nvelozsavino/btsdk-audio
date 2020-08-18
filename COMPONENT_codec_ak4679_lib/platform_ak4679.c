@@ -69,7 +69,9 @@ wiced_result_t platform_ak4679_init( platform_audio_port* data_port )
 #ifdef CYW43012C0
     if (init_done == WICED_FALSE)
     {
-        wiced_platform_init();
+        wiced_platform_i2s_init();
+        wiced_platform_i2c_init();
+
         init_done = WICED_TRUE;
     }
 #else // !CYW43012C0
@@ -107,10 +109,19 @@ wiced_result_t platform_ak4679_play_rec_init( platform_audio_port* data_port )
     pin_scl		= data_port->i2c_pin_scl;
     pin_sda		= data_port->i2c_pin_sda;
     WICED_BT_TRACE("platform_ak4679_rec_init pdn_port : %d\n",pdn_port);
-#ifndef CYW43012C0
+
+#ifdef CYW43012C0
+    if (init_done == WICED_FALSE)
+    {
+        wiced_platform_i2c_init();
+
+        init_done = WICED_TRUE;
+    }
+#else // !CYW43012C0
+
     wiced_hal_pcm_select_pads( data_port->i2s_pin_sclk, data_port->i2s_pin_ws,
             data_port->i2s_pin_dout, data_port->i2s_pin_din );
-#endif
+
 #ifdef DSP_BOOT_RAMDOWNLOAD
     if(init_done == WICED_FALSE)
     {
@@ -118,7 +129,9 @@ wiced_result_t platform_ak4679_play_rec_init( platform_audio_port* data_port )
         init_done = WICED_TRUE;
         platform_effect_ak4679_dsp_ram_download();
     }
-#endif
+#endif // DSP_BOOT_RAMDOWNLOAD
+#endif // CYW43012C0
+
     WICED_BT_TRACE("ak4679_device_register pass-->\n");
     return WICED_SUCCESS; //result;
 }

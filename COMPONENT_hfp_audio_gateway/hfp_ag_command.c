@@ -313,9 +313,9 @@ static void _parse_bac_command (hfp_ag_session_cb_t *p_scb, char *p_s)
         codec = utl_str2int(p_s);
         switch (codec)
         {
-            case HCI_CONTROL_CODEC_CVSD:
+            case HFP_CODEC_CVSD:
                 break;
-            case HCI_CONTROL_CODEC_MSBC:
+            case HFP_CODEC_MSBC:
                 p_scb->peer_supports_msbc = TRUE;
                 break;
             default:
@@ -455,6 +455,7 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
             break;
 
         case BTA_AG_HF_CMD_COPS:
+            _send_OK_to_hf(p_scb);
             _send_result_to_hf(p_scb, BTA_AG_RES_COPS, "0", 0);
             break;
 
@@ -477,7 +478,7 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
             /* stop cn timer */
             wiced_stop_timer(&p_scb->cn_timer);
 
-            if (int_arg == HCI_CONTROL_CODEC_MSBC)
+            if (int_arg == HFP_CODEC_MSBC)
                 p_scb->msbc_selected = WICED_TRUE;
             else
                 p_scb->msbc_selected = WICED_FALSE;
@@ -541,9 +542,9 @@ void hfp_ag_send_BCS_to_hf (hfp_ag_session_cb_t *p_scb)
 
     /* Try to use mSBC if the peer supports it */
     if (p_scb->peer_supports_msbc)
-        codec_uuid = HCI_CONTROL_CODEC_MSBC;
+        codec_uuid = HFP_CODEC_MSBC;
     else
-        codec_uuid = HCI_CONTROL_CODEC_CVSD;
+        codec_uuid = HFP_CODEC_CVSD;
 
     /* send +BCS */
     WICED_BT_TRACE ("send +BCS codec is %d", codec_uuid);

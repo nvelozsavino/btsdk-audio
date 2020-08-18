@@ -376,6 +376,32 @@ void bt_hs_spk_audio_a2dp_codec_info_to_audio_config(wiced_bt_a2dp_codec_info_t 
 void bt_hs_spk_audio_audio_manager_stream_start(audio_config_t *p_audio_config);
 
 /**
+ * bt_hs_spk_audio_audio_manager_stream_check
+ *
+ * Check if the audio manager for A2DP has been started.
+ *
+ * @return  WICED_TRUE: Audio Manager is set for A2DP audio streaming
+ */
+wiced_bool_t bt_hs_spk_audio_audio_manager_stream_check(void);
+
+/**
+ * bt_hs_spk_audio_audio_manager_sampling_rate_get
+ *
+ * Acquire current Audio Manager sampling rate set for A2DP audio streaming.
+ *
+ * @return  current sampling rate
+ */
+int32_t bt_hs_spk_audio_audio_manager_sampling_rate_get(void);
+
+/**
+ * bt_hs_spk_audio_audio_manager_channel_number_get
+ *
+ * Acquire current Audio Manager streaming channels.
+ * @return
+ */
+int32_t bt_hs_spk_audio_audio_manager_channel_number_get(void);
+
+/**
  * Stop and close the external codec via the Audio Manager module.
  */
 void bt_hs_spk_audio_audio_manager_stream_stop(void);

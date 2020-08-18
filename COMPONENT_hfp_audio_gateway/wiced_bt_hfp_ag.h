@@ -88,6 +88,9 @@
 #define HFP_VGM_VGS_MAX                 15
 #define HFP_VGM_VGS_MIN                 0
 
+#undef  BTM_WBS_INCLUDED
+#define BTM_WBS_INCLUDED                TRUE
+
 /* type for each service control block */
 /* Handsfree device control block */
 typedef struct

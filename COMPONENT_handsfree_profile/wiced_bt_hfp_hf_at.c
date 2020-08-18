@@ -354,6 +354,7 @@ void wiced_bt_hfp_hf_at_cmd_queue_send(wiced_bt_hfp_hf_scb_t *p_scb)
     uint16_t  len;
     BT_HDR   *p_buf = (BT_HDR *)GKI_getfirst(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
     wiced_bt_rfcomm_result_t result;
+    wiced_result_t status;
 
     if(p_buf == NULL)
     {
@@ -370,13 +371,18 @@ void wiced_bt_hfp_hf_at_cmd_queue_send(wiced_bt_hfp_hf_scb_t *p_scb)
 
     if (result == WICED_BT_RFCOMM_SUCCESS)
     {
-        wiced_start_timer(&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer,
+        status = wiced_start_timer(&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer,
                           WICED_BT_HFP_HF_CMD_TIMEOUT_VALUE);
     }
     else
     {
-        wiced_start_timer(&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer,
+        status = wiced_start_timer(&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer,
                           WICED_BT_HFP_HF_AT_CMD_RETRANS_TIMEOUT);
+    }
+
+    if (status != WICED_BT_SUCCESS)
+    {
+        WICED_BTHFP_TRACE("wiced_start_timer failed status:%d\n", status);
     }
 }
 

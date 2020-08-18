@@ -585,27 +585,3 @@ stream_interface_t* wiced_am_stream_get_intf(uint32_t stream_id, uint32_t inf_ty
     static stream_interface_t interface;
     return &interface;
 }
-
-/**
- * wiced_am_stream_id_get
- *
- * Get the assigned stream id.
- *
- * @param stream_type
- *
- * @return assigned stream id or WICED_AUDIO_MANAGER_STREAM_ID_INVALID
- */
-int32_t wiced_am_stream_id_get(stream_type_t stream_type)
-{
-    int32_t i;
-
-    for (i = 0 ; i < MAX_NO_OF_STREAMS ; i++)
-    {
-        if (wiced_am_info.stream[i].stream_type == stream_type)
-        {   // stream already opened
-            return i;
-        }
-    }
-
-    return WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
-}

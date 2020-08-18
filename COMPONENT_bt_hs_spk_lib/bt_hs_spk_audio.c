@@ -49,6 +49,7 @@
 #include "bt_hs_spk_control.h"
 #include "bt_hs_spk_button.h"
 #include "bt_hs_spk_handsfree.h"
+#include "bt_hs_spk_audio_insert.h"
 #include "bt_hs_spk_pm.h"
 #include "wiced_bt_a2dp_sink.h"
 #include "wiced_bt_a2dp_sink_int.h"
@@ -103,6 +104,9 @@ typedef struct
      * Note that the usage of this parameter is different from the interrupted field value in the a2dp control block.
      */
     wiced_bool_t is_audio_sink_streaming_suspended;
+
+    int32_t sampling_rate;  /* Current sampling rate used for Audio Manager. */
+    int32_t  channels;      /* number of channels */
 } bt_hs_spk_audio_cb_t;
 
 /**************************************************************************************************
@@ -758,6 +762,9 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
 
     bt_hs_spk_audio_app_service_set();
 
+    /* check for BLE connection parameter */
+    bt_hs_spk_control_ble_conn_param_check();
+
 #ifdef AUDIO_INSERT_ENABLED
     /* Call the A2DP Status callback if registered */
     if (bt_hs_spk_audio_cb.p_a2dp_state_cb)
@@ -817,6 +824,9 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_cfm(bt_hs_spk_audio_context_t *p_
     }
 
     bt_hs_spk_audio_app_service_set();
+
+    /* check for BLE connection parameter */
+    bt_hs_spk_control_ble_conn_param_check();
 
 #ifdef AUDIO_INSERT_ENABLED
     /* Call the A2DP Status callback if registered */
@@ -1673,12 +1683,16 @@ static void bt_hs_spk_audio_context_switch_out(void)
 
         if (bt_hs_spk_audio_cb.stream_id != WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
         {
-            if (WICED_SUCCESS != wiced_am_stream_close(bt_hs_spk_audio_cb.stream_id))
+            /* Not to close the audio manager if the audio insertion is ongoing. */
+            if (bt_hs_spk_audio_insert_state_check(WICED_FALSE) == WICED_FALSE)
             {
-                WICED_BT_TRACE("wiced_am_stream_close failed\n");
-            }
+                if (WICED_SUCCESS != wiced_am_stream_close(bt_hs_spk_audio_cb.stream_id))
+                {
+                    WICED_BT_TRACE("wiced_am_stream_close failed\n");
+                }
 
-            bt_hs_spk_audio_cb.stream_id = WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
+                bt_hs_spk_audio_cb.stream_id = WICED_AUDIO_MANAGER_STREAM_ID_INVALID;
+            }
         }
     }
 }
@@ -2360,6 +2374,8 @@ static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_s
         break;
 
     case AVRC_EVT_TRACK_CHANGE:                   /**< Track Changed */
+        /* This print is for SVT automation script */
+        WICED_BT_TRACE("Track Changed\n");
         wiced_bt_avrc_ct_get_element_attr_cmd(p_ctx->avrc.handle,
                                               0,
                                               (uint8_t) sizeof(track_element_attributes),
@@ -2615,6 +2631,46 @@ static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_con
 }
 
 /**
+ * bt_hs_spk_audio_audio_manager_stream_check
+ *
+ * Check if the audio manager for A2DP has been started.
+ *
+ * @return  WICED_TRUE: Audio Manager is set for A2DP audio streaming
+ */
+wiced_bool_t bt_hs_spk_audio_audio_manager_stream_check(void)
+{
+    if (bt_hs_spk_audio_cb.stream_id != WICED_AUDIO_MANAGER_STREAM_ID_INVALID)
+    {
+        return WICED_TRUE;
+    }
+
+    return WICED_FALSE;
+}
+
+/**
+ * bt_hs_spk_audio_audio_manager_sampling_rate_get
+ *
+ * Acquire current Audio Manager sampling rate set for A2DP audio streaming.
+ *
+ * @return  current sampling rate
+ */
+int32_t bt_hs_spk_audio_audio_manager_sampling_rate_get(void)
+{
+    return bt_hs_spk_audio_cb.sampling_rate;
+}
+
+/**
+ * bt_hs_spk_audio_audio_manager_channel_number_get
+ *
+ * Acquire current Audio Manager streaming channels.
+ * @return
+ */
+int32_t bt_hs_spk_audio_audio_manager_channel_number_get(void)
+{
+    return bt_hs_spk_audio_cb.channels;
+}
+
+/**
  * bt_hs_spk_audio_audio_manager_stream_start
  *
  * Start the external codec via Audio Manager
@@ -2665,6 +2721,9 @@ void bt_hs_spk_audio_audio_manager_stream_start(audio_config_t *p_audio_config)
     bt_hs_spk_audio_audio_manager_stream_volume_set(p_audio_config->volume, VOLUME_EFFECT_NONE);
 #endif
 
+    /* Update information. */
+    bt_hs_spk_audio_cb.sampling_rate    = p_audio_config->sr;
+    bt_hs_spk_audio_cb.channels         = p_audio_config->channels;
 }
 
 /**
