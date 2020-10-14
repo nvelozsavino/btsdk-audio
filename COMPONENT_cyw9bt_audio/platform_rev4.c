@@ -149,6 +149,7 @@ platform_audio_device_interface_t akm4954_rec =
 #ifdef AK_4679_CODEC_ENABLE
 extern platform_audio_device_ops ak4679_play_ops;
 extern platform_audio_device_ops ak4679_play_rec_ops;
+extern platform_audio_device_ops ak4679_capture_ops;
 /*platform I2C/I2S pin configs for supported codec*/
 extern platform_audio_port akm4679_audio_port;
 
@@ -190,6 +191,13 @@ platform_audio_device_interface_t akm4679_rec =
 {
         .device_id = PLATFORM_DEVICE_PLAY_RECORD,
         .device_ops = &ak4679_play_rec_ops,
+        .device_port = &akm4679_audio_port,
+};
+
+platform_audio_device_interface_t akm4679_capture =
+{
+        .device_id = PLATFORM_DEVICE_CAPTURE,
+        .device_ops = &ak4679_capture_ops,
         .device_port = &akm4679_audio_port,
 };
 
@@ -242,7 +250,8 @@ platform_audio_device_interface_t *platform_audio_device_list[] =
 #endif
 #ifdef AK_4679_CODEC_ENABLE
         &akm4679_play,
-        &akm4679_rec
+        &akm4679_rec,
+        &akm4679_capture
 #endif
 };
 

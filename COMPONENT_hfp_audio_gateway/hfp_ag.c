@@ -90,7 +90,7 @@ void sdp_timer_cb( uint32_t arg )
 }
 
 /*
- * Start up  the handsfree service.
+ * Start up the audio gateway service.
  */
 void hfp_ag_startup( hfp_ag_session_cb_t *p_scb, uint8_t num_scb, uint32_t features )
 {

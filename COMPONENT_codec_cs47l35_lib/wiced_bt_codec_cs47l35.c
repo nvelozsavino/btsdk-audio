@@ -63,6 +63,8 @@
 #include "wiced_hal_pspi.h"
 #include "wiced_hal_pcm.h"
 #include "wiced_hal_gpio.h"
+#include "wiced_platform.h"
+#include "GeneratedSource/cycfg_pins.h"
 
 #include "wiced_bt_codec_cs47l35.h"
 
@@ -70,39 +72,6 @@
 
 //audio shield2 vals
 #define BHAM_SPI_MASTER_P38_CLK_P28_MOSI_P29_MISO   (0x00111d10) /* Macro for SPI master pin configurations */
-
-#if AUDIO_SHIELD_EVK_VER==2
-
-#define BHAM_I2S_DO                             WICED_P06
-#define BHAM_I2S_DI                             WICED_P16
-#define BHAM_I2S_WS                             WICED_P15
-#define BHAM_I2S_CLK                            WICED_P07
-
-#define BHAM_MCLK1_PIN                          WICED_P32
-#define BHAM_CODEC_CS_PIN                       WICED_P34
-#define BHAM_NIRQ_PIN                           WICED_P33
-#define BHAM_PA_CTX_PIN                         WICED_P35
-#define BHAM_PA_CRX_PIN                         WICED_P36
-
-#elif AUDIO_SHIELD_EVK_VER==3
-
-#define BHAM_I2S_DO                             WICED_P28
-#define BHAM_I2S_DI                             WICED_P01
-#define BHAM_I2S_WS                             WICED_P07
-#define BHAM_I2S_CLK                            WICED_P38
-
-#define BHAM_MCLK1_PIN                          WICED_P33
-#define BHAM_CODEC_CS_PIN                       WICED_P25
-#define BHAM_NIRQ_PIN                           WICED_P34
-#define BHAM_PA_CTX_PIN                         WICED_P06
-#define BHAM_PA_CRX_PIN                         WICED_P09
-
-#else
-#error unexpected AUDIO_SHIELD_EVK_VER
-#endif
-
-#define BHAM_I2C_SDA_PIN                        WICED_P01
-#define BHAM_I2C_SCL_PIN                        WICED_P00
 
 #define BYTE0(N)                        ((uint8_t)((N) >>  0))
 #define BYTE1(N)                        ((uint8_t)((N) >>  8))
@@ -174,8 +143,8 @@ void platform_bham_codec_marley_ctrl_bus_init(void)
     if (codec_cs47l35_initialized == WICED_FALSE)
     {
         wiced_hal_pspi_init(SPI2, BHAM_SPI_FREQUENCY, SPI_MSB_FIRST, SPI_SS_ACTIVE_LOW, SPI_MODE_0);
-        REG32(iocfg_fcn_p0_adr + (4 * BHAM_CODEC_CS_PIN)) = 0;
-        wiced_hal_gpio_configure_pin(BHAM_CODEC_CS_PIN, GPIO_OUTPUT_ENABLE, GPIO_PIN_OUTPUT_LOW);
+        REG32(iocfg_fcn_p0_adr + (4 * SPI_CS)) = 0;
+        wiced_hal_gpio_configure_pin(SPI_CS, GPIO_OUTPUT_ENABLE, GPIO_PIN_OUTPUT_LOW);
 
         driver_codec_reset();
         wiced_rtos_delay_milliseconds(10, ALLOW_THREAD_TO_SLEEP);
@@ -212,7 +181,7 @@ void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, 
 {
     uint8_t p_spi_tx_buffer[6];
 
-    wiced_hal_gpio_set_pin_output(BHAM_CODEC_CS_PIN, GPIO_PIN_OUTPUT_LOW);
+    wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
     p_spi_tx_buffer[0] = (uint8_t) BYTE3(address);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
@@ -224,14 +193,14 @@ void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, 
     wiced_hal_pspi_tx_data(SPI2, 6, p_spi_tx_buffer);
     /* Write data */
     wiced_hal_pspi_tx_data(SPI2, tx_length, p_tx_buffer);
-    wiced_hal_gpio_set_pin_output(BHAM_CODEC_CS_PIN, GPIO_PIN_OUTPUT_HIGH);
+    wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_HIGH);
 }
 
 void platform_bham_codec_marley_read_cmd(uint32_t address, uint16_t rx_length, uint8_t *p_rx_buffer)
 {
     uint8_t p_spi_tx_buffer[6];
 
-    wiced_hal_gpio_set_pin_output(BHAM_CODEC_CS_PIN, GPIO_PIN_OUTPUT_LOW);
+    wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
     /* force read / write bit to read */
     p_spi_tx_buffer[0] = (uint8_t) (BYTE3(address) | 0x80);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
@@ -244,7 +213,7 @@ void platform_bham_codec_marley_read_cmd(uint32_t address, uint16_t rx_length, u
     wiced_hal_pspi_tx_data(SPI2, 6, p_spi_tx_buffer);
     /* Read data */
     wiced_hal_pspi_rx_data(SPI2, rx_length, p_rx_buffer);
-    wiced_hal_gpio_set_pin_output(BHAM_CODEC_CS_PIN, GPIO_PIN_OUTPUT_HIGH);
+    wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_HIGH);
 }
 
 void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs)

@@ -48,7 +48,6 @@
 //=================================================================================================
 typedef struct
 {
-    int16_t                             buffer[WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO * 2]; /* 128 Samples (16 bits, Stereo) */
     uint16_t                            nb_samples;    /* Number of Samples that needs to be filled */
     uint16_t                            sample_rate;   /* Sample rate for pending audio injection */
     wiced_bt_audio_insert_data_audio_t  insert_data;
@@ -89,10 +88,6 @@ void audio_insert_audio_start(uint32_t *p_sample_rate, wiced_bt_audio_insert_dat
     {
         return;
     }
-
-    memset((void *) &audio_insert_audio_cb.buffer[0],
-           0,
-           sizeof(uint16_t) * WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO * 2);
 
     audio_insert_audio_cb.nb_samples = WICED_BT_AUDIO_INSERT_PCM_SAMPLE_NB_AUDIO;
     audio_insert_audio_cb.sample_rate = 0;
@@ -191,7 +186,8 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
     /* i2s aud inject request to fill hardware FIFO with audio data */
     case I2S_AUD_INJECT_EVT_FILL_FIFO:  // WICED_BT_AUDIO_INSERT_EVT_DATA_REQ
         p_sample_in = p_data->a2dp_samples.p_source;
-        p_sample_out = &audio_insert_audio_cb.buffer[0];
+        /* Reuse the i2s aud inject audio buffer for p_sample_out */
+        p_sample_out = p_data->a2dp_samples.p_source;
 
         /* Add the insertion data to the PCM/I2S samples. */
         for (i = 0 ; i < p_data->a2dp_samples.bufferSize ; i++)
@@ -253,7 +249,7 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
         }
 
         /* Tell the FW to use these PCM samples */
-        p_data->a2dp_samples.p_finalOutput = &audio_insert_audio_cb.buffer[0];
+        p_data->a2dp_samples.p_finalOutput = p_data->a2dp_samples.p_source;
         break;
 
     /* i2s aud inject indicates the sample rate for the pending audio injection */
@@ -272,6 +268,7 @@ static void audio_insert_audio_i2s_aud_inject_callback(i2s_aud_inject_event_t ev
         }
         else
         {
+            /* Update the number of smaples needed for insertion reported by i2s aud inject */
             audio_insert_audio_cb.nb_samples = p_data->a2dp_info.bufferSize;
         }
 

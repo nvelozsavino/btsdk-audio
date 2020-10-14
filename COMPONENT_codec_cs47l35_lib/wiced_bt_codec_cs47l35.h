@@ -79,9 +79,6 @@ typedef enum
 } cs47l35_stream_type_t;
 
 /* SCO settings */
-//#define HEADSET_MIC
-#define PCB_MIC
-
 #define CS47L35_HEADPHONE_VOLUME_GAIN_MAX       0x8c // +6 dB (align to AK4679)
 #define CS47L35_HEADPHONE_VOLUME_GAIN_MIN       0
 #define CS47L35_HEADPHONE_VOLUME_GAIN_MUTE      0

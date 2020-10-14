@@ -186,10 +186,10 @@ codec_reg sco_stream_codec_config[] =
 	/* IN1LP, IN1RP: analog, micbias2, voice mic */
 	{0x310, 0x9080}, //IN1L_Control(310H):      9080  IN1L_HPF=1, IN1_DMIC_SUP=MICBIAS2A, IN1_MODE=Analogue input, IN1L_PGA_VOL=0dB
 	{0x314, 0x8080}, //IN1R_Control(314H):      8080  IN1R_HPF=1, IN1R_PGA_VOL=0dB
-#ifdef HEADSET_MIC
-	{0x311, 0x6280}, //ADC_Digital_Volume_1L(311H): 2380  IN1L_SRC=Single-ended (IN1ALP), IN_VU=1, IN1L_MUTE=1, IN1L_VOL=0dB
-#else //PCB mic
+#ifdef SPEAKER //PCB mic
 	{0x311, 0x2280}, //ADC_Digital_Volume_1L(311H): 2380  IN1L_SRC=Single-ended (IN1ALP), IN_VU=1, IN1L_MUTE=1, IN1L_VOL=0dB
+#else //Headset mic
+	{0x311, 0x6280}, //ADC_Digital_Volume_1L(311H): 2380  IN1L_SRC=Single-ended (IN1ALP), IN_VU=1, IN1L_MUTE=1, IN1L_VOL=0dB
 #endif
 	{0x315, 0x2280}, //ADC_Digital_Volume_1R(315H): 2380  IN1R_SRC=Single-ended (IN1ARP), IN_VU=1, IN1R_MUTE=1, IN1R_VOL=0dB
 

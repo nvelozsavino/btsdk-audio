@@ -194,11 +194,18 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
      */
     case WICED_BT_SCO_HOOK_EVT_MIC_SAMPLES:
         //WICED_BT_TRACE("M ");
+        /* source_data_pre_handler for MIC data is registered, processing the data first */
+        if (audio_insert_sco_cb.mic && (audio_insert_sco_cb.insert_data_mic.p_source_data_pre_handler != NULL))
+        {
+            audio_insert_sco_cb.insert_data_mic.p_source_data_pre_handler(p_data);
+        }
+
         for (i = 0; i < p_data->mic_samples.sample_count ; i++)
         {
             /* Read a Microphone sample */
             sample = p_data->mic_samples.p_input[i];
 
+            /* Insert MIC data */
             if (audio_insert_sco_cb.mic)
             {   /* Insertion data shall be added in the input MIC data. */
                 if (audio_insert_sco_cb.insert_data_mic.overwrite)
@@ -255,6 +262,12 @@ static void audio_insert_sco_hook_callback(wiced_bt_sco_hook_event_t event,
             uint16_t buf_count;
 #endif
             //WICED_BT_TRACE("SI ");
+            /* source_data_pre_handler for SPK data is registered, processing the data first */
+            if (audio_insert_sco_cb.spk && (audio_insert_sco_cb.insert_data_spk.p_source_data_pre_handler != NULL))
+            {
+                audio_insert_sco_cb.insert_data_spk.p_source_data_pre_handler(p_data);
+            }
+
             audio_insert_sco_cb.latest_sco_in_data_time_sequence_number = p_data->spk_samples.inserted_silence_len.sco_info.in.timeSeqNum;
 
             if (audio_insert_sco_cb.spk_buffer_has_data & (0x1 << audio_insert_sco_cb.spk_input_index))

@@ -43,6 +43,8 @@
 extern "C" {
 #endif
 
+#include <wiced_bt_gatt.h>
+
 /**
  * @addtogroup  wiced_bt_ams_api_functions        AMS Library API
  * @ingroup     wicedbt

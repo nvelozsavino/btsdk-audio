@@ -248,7 +248,6 @@ static void bt_hs_spk_audio_insert_start_audio(void)
 wiced_result_t bt_hs_spk_audio_insert_start(bt_hs_spk_audio_insert_config_t *p_config)
 {
     wiced_result_t status;
-    wiced_bt_audio_insert_config_t audio_insert_config = {0};
 
     /* Check if audio Insert is active */
     if (bt_hs_spk_audio_insert_cb.audio_insert_active)
@@ -300,7 +299,7 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
 
     if (bt_hs_spk_audio_insert_cb.audio_insert_active == WICED_FALSE)
     {
-        APP_TRACE_ERR("Audio Insert not active\n");
+        APP_TRACE_DBG("Audio Insert not active\n");
         return WICED_BT_ERROR;
     }
 
@@ -328,12 +327,6 @@ wiced_result_t bt_hs_spk_audio_insert_stop(void)
         APP_TRACE_DBG("Stop Audio Insert\n");
         /* If the Audio Insertion was done via the Audio Insert library, stop it */
         wiced_bt_audio_insert_stop(WICED_BT_AUDIO_INSERT_TYPE_AUDIO);
-
-        /* If a dedicated Audio Manager Stream (to control external codec) was used */
-        if (bt_hs_spk_audio_streaming_check(NULL) != WICED_ALREADY_CONNECTED)
-        {
-            bt_hs_spk_audio_audio_manager_stream_stop();
-        }
     }
 
     /* De-Register a SCO Status callback. */

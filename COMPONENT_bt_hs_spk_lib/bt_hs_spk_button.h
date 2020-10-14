@@ -113,6 +113,7 @@ typedef struct
     application_button_t            button;
     button_manager_event_t          event;
     button_manager_button_state_t   state;
+    uint32_t                        repeat;
 } bt_hs_spk_button_action_t;
 
 typedef struct

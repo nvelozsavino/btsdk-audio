@@ -80,6 +80,13 @@ void wiced_bt_ak4679_start_dac(uint32_t sample_freq);
 void wiced_bt_ak4679_start_adc_and_dac(uint32_t sample_freq);
 
 /**
+ * Start capture for audio source applications
+ *
+ * @param[in]       sample_freq : Sample frequency in samples per second
+ */
+void wiced_bt_ak4679_start_capture(uint32_t sample_freq);
+
+/**
  * Set codec sink configurations
  *
  * @param[in]       sink : sink device to which output has to be routed.

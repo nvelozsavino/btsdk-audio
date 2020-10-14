@@ -136,6 +136,40 @@ wiced_result_t platform_ak4679_play_rec_init( platform_audio_port* data_port )
     return WICED_SUCCESS; //result;
 }
 
+wiced_result_t platform_ak4679_capture_init( platform_audio_port* data_port )
+{
+    wiced_result_t result;
+    pdn_port = data_port->pin_reset;
+    pin_scl		= data_port->i2c_pin_scl;
+    pin_sda		= data_port->i2c_pin_sda;
+    WICED_BT_TRACE("platform_ak4679_rec_init pdn_port : %d\n",pdn_port);
+
+#ifdef CYW43012C0
+    if (init_done == WICED_FALSE)
+    {
+        wiced_platform_i2s_init();
+        wiced_platform_i2c_init();
+
+        init_done = WICED_TRUE;
+    }
+#else // !CYW43012C0
+
+    wiced_hal_pcm_select_pads( data_port->i2s_pin_sclk, data_port->i2s_pin_ws,
+            data_port->i2s_pin_dout, data_port->i2s_pin_din );
+
+#ifdef DSP_BOOT_RAMDOWNLOAD
+    if(init_done == WICED_FALSE)
+    {
+        wiced_bt_ak4679_init( pdn_port,pin_scl, pin_sda );
+        init_done = WICED_TRUE;
+        platform_effect_ak4679_dsp_ram_download();
+    }
+#endif // DSP_BOOT_RAMDOWNLOAD
+#endif // CYW43012C0
+
+    WICED_BT_TRACE("ak4679_device_register pass-->\n");
+    return WICED_SUCCESS; //result;
+}
 
 wiced_result_t platform_ak4679_deinit( void* device_data )
 {
@@ -147,6 +181,15 @@ wiced_result_t platform_ak4679_deinit( void* device_data )
 }
 
 wiced_result_t platform_ak4679_play_rec_deinit( void* device_data )
+{
+#ifdef CYW43012C0
+    init_done = WICED_FALSE;
+#endif
+    /*TODO*/
+    return WICED_SUCCESS;
+}
+
+wiced_result_t platform_ak4679_capture_deinit( void* device_data )
 {
 #ifdef CYW43012C0
     init_done = WICED_FALSE;
@@ -196,6 +239,25 @@ wiced_result_t platform_ak4679_play_rec_configure( void* device_data, platform_a
     return WICED_SUCCESS;
 }
 
+wiced_result_t platform_ak4679_capture_configure( void* device_data, platform_audio_config_t* config )
+{
+    (void)(device_data);
+#ifndef DSP_BOOT_RAMDOWNLOAD
+    wiced_bt_ak4679_init( pdn_port,pin_scl, pin_sda );
+#endif
+    switch (config->io_device)
+    {
+    case LINEIN:
+        record_sampling_rate = config->sample_rate;
+        g_mic_gain = config->mic_gain;
+        break;
+    default :
+        WICED_BT_TRACE("ak4679_init device not supported Error\n");
+    }
+    WICED_BT_TRACE("ak4679_configure capture success\n");
+    return WICED_SUCCESS;
+}
+
 wiced_result_t platform_ak4679_start_streaming( void* device_data )
 {
     wiced_bt_ak4679_start_dac(playback_sampling_rate);
@@ -207,6 +269,15 @@ wiced_result_t platform_ak4679_start_play_rec_streaming( void* device_data )
     wiced_result_t result = WICED_ERROR;
 
     wiced_bt_ak4679_start_adc_and_dac(record_sampling_rate);
+
+    return WICED_SUCCESS;
+}
+
+wiced_result_t platform_ak4679_start_capture_streaming( void* device_data )
+{
+    wiced_result_t result = WICED_ERROR;
+
+    wiced_bt_ak4679_start_capture(record_sampling_rate);
 
     return WICED_SUCCESS;
 }
@@ -223,6 +294,16 @@ wiced_result_t platform_ak4679_stop_streaming( void* device_data )
 }
 
 wiced_result_t platform_ak4679_stop_play_rec_streaming( void* device_data )
+{
+    wiced_result_t result = WICED_ERROR;
+    WICED_BT_TRACE("platform_ak4679_stop_rec_streaming JC \n");
+
+    wiced_bt_ak4679_stop();
+
+    return WICED_SUCCESS;
+}
+
+wiced_result_t platform_ak4679_stop_capture_streaming( void* device_data )
 {
     wiced_result_t result = WICED_ERROR;
     WICED_BT_TRACE("platform_ak4679_stop_rec_streaming JC \n");
@@ -405,6 +486,13 @@ wiced_result_t platform_ak4679_set_sr( void* device_data, int32_t sr )
     return WICED_SUCCESS;
 }
 
+wiced_result_t platform_ak4679_set_capture_sr( void* device_data, int32_t sr )
+{
+    WICED_BT_TRACE("platform_ak4679_set_rec_sr %d \n", sr);
+    record_sampling_rate = sr;
+    return WICED_SUCCESS;
+}
+
 wiced_result_t platform_ak4679_get_volume( void* device_data, int32_t *volume_level )
 {
     *volume_level = g_volume_level;
@@ -416,7 +504,12 @@ wiced_result_t platform_ak4679_get_play_rec_volume( void* device_data, int32_t *
 {
 
     return WICED_SUCCESS;
+}
 
+wiced_result_t platform_ak4679_get_capture_volume( void* device_data, int32_t *volume_level )
+{
+
+    return WICED_SUCCESS;
 }
 
 wiced_result_t platform_ak4679_get_volume_range( void* device_data, int32_t* min_volume_level, int32_t* max_volume_level)
@@ -426,6 +519,12 @@ wiced_result_t platform_ak4679_get_volume_range( void* device_data, int32_t* min
 }
 
 wiced_result_t platform_ak4679_get_play_rec_volume_range( void* device_data, int32_t* min_volume_level, int32_t* max_volume_level)
+{
+    /*TODO*/
+    return WICED_SUCCESS;
+}
+
+wiced_result_t platform_ak4679_get_capture_volume_range( void* device_data, int32_t* min_volume_level, int32_t* max_volume_level)
 {
     /*TODO*/
     return WICED_SUCCESS;
@@ -475,6 +574,22 @@ platform_audio_device_ops ak4679_play_rec_ops =
         .audio_device_set_mic_gain      = platform_ak4679_set_mic_gain,
         .audio_device_get_volume        = platform_ak4679_get_play_rec_volume,
         .audio_device_get_volume_range  = platform_ak4679_get_play_rec_volume_range,
+        .audio_device_ioctl             = platform_ak4679_ioctl,
+};
+
+platform_audio_device_ops ak4679_capture_ops =
+{
+        .audio_device_init              = platform_ak4679_capture_init,
+        .audio_device_deinit            = platform_ak4679_capture_deinit,
+        .audio_device_configure         = platform_ak4679_capture_configure,
+        .audio_device_start_streaming   = platform_ak4679_start_capture_streaming,
+        .audio_device_stop_streaming    = platform_ak4679_stop_capture_streaming,
+        .audio_device_set_sr            = platform_ak4679_set_capture_sr,
+        .audio_device_set_sink          = platform_ak4679_set_sink,
+        .audio_device_set_volume        = platform_ak4679_set_volume,
+        .audio_device_set_mic_gain      = platform_ak4679_set_mic_gain,
+        .audio_device_get_volume        = platform_ak4679_get_capture_volume,
+        .audio_device_get_volume_range  = platform_ak4679_get_capture_volume_range,
         .audio_device_ioctl             = platform_ak4679_ioctl,
 };
 

@@ -40,20 +40,8 @@
 #include "platform_audio_codec.h"
 #include "platform_audio_effects.h"
 #include "platform.h"
-
-#if AUDIO_SHIELD_EVK_VER==2
-#define WICED_BUTTON1 (WICED_P00)
-#define WICED_BUTTON2 (WICED_P14)
-#define WICED_BUTTON3 (WICED_P04)
-#define WICED_BUTTON4 (WICED_P05)
-#elif AUDIO_SHIELD_EVK_VER==3
-  #define WICED_BUTTON1 (WICED_P00)
-  #define WICED_BUTTON2 (WICED_P06)
-  #define WICED_BUTTON3 (WICED_P02)
-  #define WICED_BUTTON4 (WICED_P04)
-#else
-#error unexpected AUDIO_SHIELD_EVK_VER
-#endif
+#include "wiced_platform.h"
+#include "GeneratedSource/cycfg_pins.h"
 
 gpio_button_t platform_gpio_buttons[] =
 {
@@ -76,14 +64,15 @@ gpio_button_t platform_gpio_buttons[] =
         .gpio       = WICED_BUTTON3,
         .trigger    = IRQ_TRIGGER_BOTH_EDGES,
     },
+#if (WICED_PLATFORM_BUTTON_MAX_DEF >= 4)
     [PLATFORM_BUTTON_4] =
     {
         .polarity   = WICED_ACTIVE_HIGH,
         .gpio       = WICED_BUTTON4,
         .trigger    = IRQ_TRIGGER_BOTH_EDGES,
     },
+#endif
 };
-
 
 #ifdef CS47L35_CODEC_ENABLE
 extern platform_audio_device_ops cs47l35_play_ops;
@@ -95,37 +84,19 @@ extern platform_audio_port cs47l35_audio_port;
 #define SPI_FREQ_24MHZ                          (1000000) /* 24 MHz */
 
 /*platform SPI/I2S pin configs for supported codec*/
-#if AUDIO_SHIELD_EVK_VER==2
 platform_audio_port cs47l35_audio_port = {
     .spi_speed = SPI_FREQ_24MHZ,
-    .spi_pin_clk = WICED_P13,
-    .spi_pin_cs = WICED_P34,
-    .spi_pin_mosi = WICED_P30,
-    .spi_pin_miso = WICED_P12,
+    .spi_pin_clk = SPI_CLK,
+    .spi_pin_cs = SPI_CS,
+    .spi_pin_mosi = SPI_MOSI,
+    .spi_pin_miso = SPI_MISO,
     .i2s_mode = I2S_SLAVE,
-    .i2s_pin_sclk = WICED_P07,
-    .i2s_pin_ws = WICED_P15,
-    .i2s_pin_din = WICED_P16,
-    .i2s_pin_dout = WICED_P06,
-    .pin_reset = WICED_P33,
+    .i2s_pin_sclk = I2S_CLK,
+    .i2s_pin_ws = I2S_WS,
+    .i2s_pin_din = I2S_DI,
+    .i2s_pin_dout = I2S_DO,
+    .pin_reset = WICED_RESET_PIN,
 };
-#elif AUDIO_SHIELD_EVK_VER==3
-platform_audio_port cs47l35_audio_port = {
-    .spi_speed = SPI_FREQ_24MHZ,
-    .spi_pin_clk = WICED_P17,
-    .spi_pin_cs = WICED_P25,
-    .spi_pin_mosi = WICED_P29,
-    .spi_pin_miso = WICED_P16,
-    .i2s_mode = I2S_SLAVE,
-    .i2s_pin_sclk = WICED_P38,
-    .i2s_pin_ws = WICED_P07,
-    .i2s_pin_din = WICED_P01,
-    .i2s_pin_dout = WICED_P28,
-    .pin_reset = WICED_P34,
-};
-#else
-#error unexpected AUDIO_SHIELD_EVK_VER
-#endif
 
 /* A2DP Sink (Render) device for platform */
 platform_audio_device_interface_t cs47l35_play =

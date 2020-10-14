@@ -853,46 +853,6 @@ void bt_hs_spk_control_handle_set_pairability ( uint8_t pairing_allowed )
     }
 }
 
-#if 0
-/*
- * Remote Control can work a target or a controller.  This function sets up the appropriate role.
- */
-void bt_hs_spk_control_switch_avrcp_role(uint8_t new_role)
-{
-    WICED_BT_TRACE ( "[%s] New Role: %d \n", __FUNCTION__, new_role);
-
-    if (new_role != avrcp_profile_role)
-    {
-        switch (avrcp_profile_role)
-        {
-        case AVRCP_TARGET_ROLE:
-            /* Shutdown the avrcp target */
-            wiced_bt_rc_target_initiate_close();
-
-            /* Initialize the avrcp controller */
-            avrc_app_init();
-
-            avrcp_profile_role = new_role;
-            break;
-
-        case AVRCP_CONTROLLER_ROLE:
-            /* Shutdown the avrcp controller */
-            wiced_bt_avrc_ct_cleanup();
-
-            /* Initialize the avrcp target */
-            app_avrc_init();
-            wiced_bt_rc_target_register();
-
-            avrcp_profile_role = new_role;
-            break;
-
-        default:
-            break;
-        }
-    }
-}
-#endif
-
 wiced_app_service_t* get_app_current_service( void )
 {
     return ( current_service );

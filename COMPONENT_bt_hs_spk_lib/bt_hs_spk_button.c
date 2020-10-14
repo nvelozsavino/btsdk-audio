@@ -563,6 +563,12 @@ static void bt_hs_spk_button_event_handler(platform_button_t button, button_mana
 
         if (button_event_id == BUTTON_EVENT_ID(p_action->button, p_action->event, p_action->state))
         {
+            if (p_action->event == BUTTON_HOLDING_EVENT && p_action->repeat != repeat)
+            {
+                new_action = NO_ACTION;
+                break;
+            }
+
             new_action = p_action->action;
             break;
         }

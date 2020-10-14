@@ -460,3 +460,6 @@ typedef enum
 
 #define AK4679_MIC_GAIN_MAX_VAL     0x0D    /* Max Gain Register Value */
 #define AK4679_MIC_GAIN_MAX_DB     24       /* Max Gain in dB */
+
+/* Setting of PLL Mode for MCKI pin */
+#define MCKI_PLL_12MHZ             0x06     /* 12MHz (default) */

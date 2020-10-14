@@ -390,8 +390,6 @@ extern hci_control_cb_t *hci_control_cb_ptr;
 #define hci_control_cb( *hci_control_cb_ptr )
 #endif
 
-extern wiced_bool_t avrcp_profile_role;
-
 extern int16_t sine_wave_mono[32];
 extern int16_t sine_wave_stereo[64];
 

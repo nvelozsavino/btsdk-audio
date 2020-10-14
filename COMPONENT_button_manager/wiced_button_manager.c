@@ -43,12 +43,9 @@
 /******************************************************
  *                      Macros
  ******************************************************/
-#define BUTTON_WORKER
 
 #define BUTTON_TIMER_TIMEOUT        (100) /*msec*/
-#define BUTTON_WORKER_PRIORITY      (3)
-#define BUTTON_WORKER_STACKSIZE     (2048)
-#define BUTTON_WORKER_QUEUESIZE     (15)
+
 /******************************************************
  *                    Constants
  ******************************************************/
@@ -68,12 +65,6 @@
 /******************************************************
  *               Function Declarations
  ******************************************************/
-#ifdef BUTTON_WORKER
-wiced_result_t button_create_worker_thread( button_worker_thread_t* worker_thread, uint8_t priority, uint32_t stack_size, uint32_t event_queue_size );
-wiced_result_t button_delete_worker_thread( button_worker_thread_t* worker_thread );
-wiced_result_t button_send_asynchronous_event( button_worker_thread_t* worker_thread, event_handler_t function, void* arg );
-#endif
-
 static void button_state_change_callback( platform_button_t id, wiced_bool_t new_state );
 static wiced_result_t button_pressed_event_handler ( void* arg );
 static wiced_result_t button_released_event_handler( void* arg );
@@ -83,19 +74,57 @@ static wiced_bool_t button_check_event_mask ( button_manager_button_t* button, u
 static void button_check_for_double_click( button_manager_button_t* button,  button_manager_event_t* new_event );
 static button_manager_event_t button_deduce_duration_event( button_manager_button_t *button, uint32_t current_interval );
 static button_manager_button_t* get_button( platform_button_t id );
-static void timer_handler(TIMER_PARAM_TYPE arg);
 extern uint64_t clock_SystemTimeMicroseconds64( void );
+
 /******************************************************
  *               Variables Definitions
  ******************************************************/
 static button_manager_t* button_manager;
 
-#ifdef BUTTON_WORKER
-static button_worker_thread_t button_work;
-#endif
 /******************************************************
  *               Function Definitions
  ******************************************************/
+
+/*
+ * button_long_press_detect_timeout_handler
+ *
+ * Timeout handler for button long press detect timer.
+ *
+ * The execution duration of this utility is defined in BUTTON_TIMER_TIMEOUT.
+ */
+static void button_long_press_detect_timeout_handler(TIMER_PARAM_TYPE arg)
+{
+    button_manager_button_t *p_button = (button_manager_button_t *) arg;
+
+    /* Get current timestatmp. */
+    p_button->timer_timestamp = clock_SystemTimeMicroseconds64();
+
+    deferred_button_timer_handler((void *) p_button);
+}
+
+/*
+ * button_debounce_timeout_handler
+ *
+ * Timeout handler for button debounce timer.
+ */
+static void button_debounce_timeout_handler(TIMER_PARAM_TYPE arg)
+{
+    button_manager_button_t *p_button = (button_manager_button_t *) arg;
+    wiced_result_t result;
+
+    //WICED_BT_TRACE("button_debounce_timeout_handler (%d, %d)\n", p_button->configuration->button, p_button->debounce_counter);
+
+    if (p_button->debounce_counter > 0)
+    {
+        /* Reset the button debounce counter. */
+        p_button->debounce_counter = 0;
+
+        button_pressed_event_handler((void *) p_button);
+    }
+
+    /* Reset the button debounce state. */
+    p_button->debouncing = WICED_FALSE;
+}
 
 /**
  * The application should call this function to Initialize the Button Manager
@@ -114,7 +143,6 @@ wiced_result_t wiced_button_manager_init( button_manager_t* manager, const wiced
     memset( manager, 0, sizeof( *manager ) );
 
     manager->configuration = configuration;
-    //manager->worker_thread = thread;
     manager->buttons = buttons;
     manager->number_of_buttons = number_of_buttons;
 
@@ -126,33 +154,38 @@ wiced_result_t wiced_button_manager_init( button_manager_t* manager, const wiced
         platform_button_enable( buttons[a].configuration->button );
         buttons[a].current_state = BUTTON_STATE_RELEASED;
         buttons[a].repeat = 0;
+        buttons[a].debounce_counter = 0;
+        buttons[a].debouncing = WICED_FALSE;
     }
 
     platform_button_register_state_change_callback( button_state_change_callback );
 
-    if (WICED_SUCCESS != wiced_init_timer(&button_manager->timer,
-                timer_handler, (TIMER_PARAM_TYPE)manager, WICED_MILLI_SECONDS_PERIODIC_TIMER)) {
-        WICED_BT_TRACE("timer init failed\n");
-        return WICED_ERROR;
-    }
-    button_manager->first_intr = WICED_FALSE;
-#ifdef BUTTON_WORKER
-    if(WICED_SUCCESS != button_create_worker_thread( &button_work, BUTTON_WORKER_PRIORITY, BUTTON_WORKER_STACKSIZE, BUTTON_WORKER_QUEUESIZE ))
-        WICED_BT_TRACE("Button worker thread create failed\n");
-#else
-    manager->worker_thread = wiced_rtos_create_worker_thread();
-
-    if (manager->worker_thread != NULL)
+    /* Initialize the timers used for detecting the long press event. */
+    for (a = 0 ; a < number_of_buttons ; a++)
     {
-	if( WICED_SUCCESS != wiced_rtos_init_worker_thread(manager->worker_thread,
-										 BUTTON_WORKER_PRIORITY,
-											 BUTTON_WORKER_STACK_SIZE,
-											 BUTTON_WORKER_QUEUE_SIZE))
-	{
-		WICED_BT_TRACE("button_worker_thread create failed\n");
-		return WICED_ERROR;
-	}
-#endif
+        if (WICED_SUCCESS != wiced_init_timer(&buttons[a].long_press_timer,
+                                              button_long_press_detect_timeout_handler,
+                                              (TIMER_PARAM_TYPE) &buttons[a],
+                                              WICED_MILLI_SECONDS_PERIODIC_TIMER))
+        {
+            WICED_BT_TRACE("button %d long press detect timer init failed\n", buttons[a].configuration->button);
+            return WICED_ERROR;
+        }
+    }
+
+    /* Initialize the timers used for de-bounce. */
+    for (a = 0 ; a < number_of_buttons ; a++)
+    {
+        if (WICED_SUCCESS != wiced_init_timer(&buttons[a].debounce_timer,
+                                              button_debounce_timeout_handler,
+                                              (TIMER_PARAM_TYPE) &buttons[a],
+                                              WICED_MILLI_SECONDS_TIMER))
+        {
+            WICED_BT_TRACE("button %d debounce timer init failed\n", buttons[a].configuration->button);
+            return WICED_ERROR;
+        }
+    }
+
     return WICED_SUCCESS;
 }
 
@@ -171,49 +204,25 @@ wiced_result_t wiced_button_manager_deinit( button_manager_t* manager )
         platform_button_deinit( manager->buttons[a].configuration->button );
     }
 
-#ifdef BUTTON_WORKER
-    button_delete_worker_thread(&button_work);
-#else
-    wiced_rtos_delete_worker_thread(manager->worker_thread);
-#endif
+    for (a = 0 ; a < manager->number_of_buttons ; a++)
+    {
+        if (WICED_TRUE == wiced_is_timer_in_use(&manager->buttons[a].debounce_timer))
+        {
+            wiced_stop_timer(&manager->buttons[a].debounce_timer);
+        }
 
-    if (WICED_TRUE == wiced_is_timer_in_use(&button_manager->timer))
-        wiced_stop_timer(&button_manager->timer);
+        wiced_deinit_timer(&manager->buttons[a].debounce_timer);
 
-    wiced_deinit_timer(&button_manager->timer);
+        if (WICED_TRUE == wiced_is_timer_in_use(&manager->buttons[a].long_press_timer))
+        {
+            wiced_stop_timer(&manager->buttons[a].long_press_timer);
+        }
+
+        wiced_deinit_timer(&manager->buttons[a].long_press_timer);
+    }
 
     button_manager = NULL;
     return WICED_SUCCESS;
-}
-
-/**
- * Handler to the timer
- *
- * @param     arg   : Arguments passed by the timer framework
- * @return    void  : No return value expected.
- *
- * @note      This handler will be executed every 100 ms (BUTTON_TIMER_TIMEOUT) once the timer is
- *            started.
- */
-
-void timer_handler(TIMER_PARAM_TYPE arg)
-{
-    button_manager_t* manager = (button_manager_t*)arg;
-
-    if (button_manager->first_intr == WICED_FALSE)
-    {
-        button_manager->first_intr = WICED_TRUE;
-        return;
-    }
-
-    /* Get current timestatmp. */
-    button_manager->timer_timestamp = clock_SystemTimeMicroseconds64();
-
-#ifdef BUTTON_WORKER
-    button_send_asynchronous_event( &button_work,deferred_button_timer_handler, (void *) button_manager );
-#else
-    wiced_send_asynchronous_event( button_manager->worker_thread, deferred_button_timer_handler, (void *) button_manager );
-#endif
 }
 
 /**
@@ -222,57 +231,124 @@ void timer_handler(TIMER_PARAM_TYPE arg)
  * @param     arg   : Arguments passed by the timer framework to timer handler
  * @return          : result
  */
-static wiced_result_t deferred_button_timer_handler( void* arg )
+static wiced_result_t deferred_button_timer_handler(void* arg)
 {
-    uint32_t                 a;
-    button_manager_t*        manager = (button_manager_t*) arg;
-    button_manager_button_t* button;
-    button_manager_event_t   new_held_event = 0;
-    uint64_t                 duration;  // us
+    button_manager_button_t *p_button = (button_manager_button_t *) arg;
+    uint64_t                duration;  // us
+    button_manager_event_t  new_held_event = 0;
 
-    for ( a = 0; a < manager->number_of_buttons; a++ )
+    /* Check current button state. */
+    if (p_button->current_state == BUTTON_STATE_RELEASED)
     {
-        button = &manager->buttons[a];
+        return WICED_SUCCESS;
+    }
 
-        /* Calculate the time difference. */
-        duration = manager->timer_timestamp - button->pressed_timestamp;    // us
-        duration = duration / 1000; // ms
+    /* Calculate the time difference. */
+    duration = p_button->timer_timestamp - p_button->pressed_timestamp; // us
+    duration = duration / 1000; // ms
 
-        if( button->current_state == BUTTON_STATE_RELEASED )
+    /* deduce the event depending on the duration */
+    new_held_event = button_deduce_duration_event(p_button, (uint32_t) duration);
+
+    /*
+     * timers should be mainly interested in duration-specific events;
+     * let release_handler only report Click events to the application
+     */
+    if (new_held_event == BUTTON_CLICK_EVENT)
+    {
+        return WICED_SUCCESS;
+    }
+
+    if (button_check_event_mask(p_button, new_held_event))
+    {
+        if (p_button->last_sent_event != BUTTON_HOLDING_EVENT)
         {
-            continue;
-        }
-
-        /** deduce the event depending on the duration */
-        new_held_event = button_deduce_duration_event ( button, (uint32_t) duration );
-
-        /**
-         * timers should be mainly interested in duration-specific events;
-         * let release_handler only report Click events to the application
-         */
-        if ( new_held_event == BUTTON_CLICK_EVENT )
-        {
-            continue;
-        }
-
-        if( button_check_event_mask( button, new_held_event ) )
-        {
-            if (button->last_sent_event != BUTTON_HOLDING_EVENT)
+            if (p_button->last_sent_event != new_held_event)
             {
-                if ( button->last_sent_event != new_held_event )
-                {
-                    button_manager->configuration->event_handler( button, new_held_event, button->current_state );
-                    button->last_sent_event = new_held_event;
-                }
+                button_manager->configuration->event_handler(p_button, new_held_event, p_button->current_state);
+                p_button->last_sent_event = new_held_event;
             }
-            else
-            {
-                button_manager->configuration->event_handler( button, new_held_event, button->current_state );
-                button->last_sent_event = new_held_event;
-            }
+        }
+        else
+        {
+            button_manager->configuration->event_handler(p_button, new_held_event, p_button->current_state);
+            p_button->last_sent_event = new_held_event;
         }
     }
+
     return WICED_SUCCESS;
+}
+
+static void button_state_change_callback_pressed(button_manager_button_t *p_button)
+{
+    /* Check if the button is under de-bounce state. */
+    if (p_button->debouncing)
+    {   // under de-bounce state
+        p_button->debounce_counter++;
+    }
+    else
+    {
+        /* ignore pressed event for already pressed button*/
+        if (p_button->current_state == BUTTON_STATE_HELD)
+        {
+            return;
+        }
+
+        /* Get current timestamp for pressed event. */
+        p_button->pressed_timestamp = clock_SystemTimeMicroseconds64();
+
+        /* Start the button debounce timer. */
+        if (WICED_SUCCESS != wiced_start_timer(&p_button->debounce_timer,
+                                               (uint32_t) button_manager->configuration->debounce_duration))
+        {
+            WICED_BT_TRACE("button %d timer start failed\n", p_button->configuration->button);
+            return;
+        }
+
+        /* Start the long pressed event detect timer. */
+        if (WICED_SUCCESS != wiced_start_timer(&p_button->long_press_timer, BUTTON_TIMER_TIMEOUT))
+        {
+            WICED_BT_TRACE("%s timer start failed\n", __func__);
+            return;
+        }
+
+        /* Update information. */
+        p_button->debouncing        = WICED_TRUE;
+        p_button->debounce_counter  = 1;
+    }
+}
+
+static void button_state_change_callback_released(button_manager_button_t *p_button)
+{
+    wiced_result_t result;
+
+    /* Check if the button is under de-bounce state. */
+    if (p_button->debouncing)
+    {   // under de-bounce state
+        p_button->debounce_counter--;
+    }
+    else
+    {
+        /* ignore released event for already released button */
+        if (p_button->current_state == BUTTON_STATE_RELEASED)
+        {
+            return;
+        }
+
+        /* Get current timestamp for release event. */
+        p_button->released_timestamp = clock_SystemTimeMicroseconds64();
+
+        /* Stop the long pressed event detect timer. */
+        if (wiced_is_timer_in_use(&p_button->long_press_timer))
+        {
+            if (WICED_SUCCESS != wiced_stop_timer(&p_button->long_press_timer))
+            {
+                WICED_BT_TRACE("button %d long press timer stop failed\n", p_button->configuration->button);
+            }
+        }
+
+        button_released_event_handler((void *) p_button);
+    }
 }
 
 /**
@@ -282,17 +358,21 @@ static wiced_result_t deferred_button_timer_handler( void* arg )
  * @param     new_state : new state of the button.
  * @return         void : no return value is expected.
  */
-static void button_state_change_callback( platform_button_t id, wiced_bool_t new_state )
+static void button_state_change_callback(platform_button_t id, wiced_bool_t new_state)
 {
-    wiced_result_t result;
-
     button_manager_button_t* button = get_button( id );
 
-#ifdef  BUTTON_WORKER
-    if ( button == NULL || button_manager == NULL )
-#else
-    if ( button == NULL || button_manager == NULL || button_manager->worker_thread == NULL )
+#if 0
+    WICED_BT_TRACE("button_state_change_callback (button %d %s, %s, %d, %d)\n",
+                   id,
+                   button->current_state == BUTTON_STATE_HELD ? "H" : "R",
+                   button->debouncing ? "D" : "-",
+                   new_state,
+                   button->debounce_counter);
 #endif
+
+    /* Check module state.*/
+    if ( button == NULL || button_manager == NULL )
     {
         WICED_BT_TRACE("button manager not initialized\n");
         return;
@@ -300,52 +380,11 @@ static void button_state_change_callback( platform_button_t id, wiced_bool_t new
 
     if ( new_state == WICED_TRUE )
     {
-        /** ignore pressed event for already pressed button*/
-        if ( button->current_state == BUTTON_STATE_HELD )
-        {
-            return;
-        }
-
-        /* Get current timestamp for pressed event. */
-        button->pressed_timestamp = clock_SystemTimeMicroseconds64();
-
-        if (WICED_SUCCESS != wiced_start_timer(&button_manager->timer, BUTTON_TIMER_TIMEOUT)) {
-            WICED_BT_TRACE("%s timer start failed\n", __func__);
-        }
-#ifdef BUTTON_WORKER
-        result = button_send_asynchronous_event( &button_work, button_pressed_event_handler, (void *) button );
-#else
-        result = wiced_rtos_send_asynchronous_event( button_manager->worker_thread, button_pressed_event_handler, (void *) button );
-#endif
-        if (WICED_SUCCESS != result)
-        WICED_BT_TRACE("Button event work posting failed %d\n",result);
+        button_state_change_callback_pressed(button);
     }
     else
     {
-        /* Timer has to be stopped when the event is button release. */
-        if (WICED_SUCCESS != wiced_stop_timer(&button_manager->timer)) {
-            WICED_BT_TRACE("%s timer stop failed\n", __func__);
-        }
-        button_manager->first_intr = WICED_FALSE;
-
-        /* Get current timestamp for release event. */
-        button->released_timestamp = clock_SystemTimeMicroseconds64();
-
-        /** ignore released event for already released button*/
-        if ( button->current_state == BUTTON_STATE_RELEASED )
-        {
-            return;
-        }
-
-
-        //WICED_BT_TRACE("button->released_timestamp %d\n",button->released_timestamp);
-#ifdef BUTTON_WORKER
-        result = button_send_asynchronous_event( &button_work,button_released_event_handler, (void *) button );
-#else
-        result = wiced_rtos_send_asynchronous_event( button_manager->worker_thread, button_released_event_handler, (void *) button );
-#endif
-        if (WICED_SUCCESS != result)
-        WICED_BT_TRACE("Button event work posting failed %d\n",result);
+        button_state_change_callback_released(button);
     }
 }
 
@@ -358,6 +397,7 @@ static void button_state_change_callback( platform_button_t id, wiced_bool_t new
 static wiced_result_t button_pressed_event_handler( void* arg )
 {
     button_manager_button_t* button = (button_manager_button_t*)arg;
+
     if ( button->current_state == BUTTON_STATE_HELD )
     {
         return WICED_SUCCESS;
@@ -543,100 +583,3 @@ static button_manager_button_t* get_button( platform_button_t id )
 
     return NULL;
 }
-
-#ifdef BUTTON_WORKER
-
-/**
- * Worker thread.
- *
- * @param     arg   : Arguments passed to the worker thread
- * @return    void  : No return value expected.
- */
-static void button_worker_thread_main( uint32_t arg )
-{
-    button_worker_thread_t* worker_thread = (button_worker_thread_t*) arg;
-    //WICED_BT_TRACE("%s\n",__func__);
-    while ( 1 )
-    {
-        button_event_message_t message;
-
-        if ( wiced_rtos_pop_from_queue( worker_thread->event_queue, &message, WICED_WAIT_FOREVER ) == WICED_SUCCESS )
-        {
-		message.function( message.arg );
-        }
-    }
-}
-
-/**
- * creates Worker thread.
- *
- * @param     worker_thread   : pointer to button worker thread
- * @param     priority        : preiority of the thread
- * @param     stack_size      : stack size for the worker thread.
- * @param     event_queue_size: Size of the queue.
- * @return    wiced_result_t  : result.
- */
-wiced_result_t button_create_worker_thread( button_worker_thread_t* worker_thread, uint8_t priority, uint32_t stack_size, uint32_t event_queue_size )
-{
-    memset( worker_thread, 0, sizeof( *worker_thread ) );
-    worker_thread->event_queue = wiced_rtos_create_queue();
-
-    /* Buffer pool for this queue will be event_queue_size *(sizeof(button_event_message_t) + header size)
-     * Size of the message in our case is 8 bytes. but in some cases it is not sufficient, so increasing it by 8 more bytes.
-     */
-    if ( wiced_rtos_init_queue( worker_thread->event_queue, "worker queue", 2*sizeof(button_event_message_t), event_queue_size ) != WICED_SUCCESS )
-    {
-        WICED_BT_TRACE("wiced_rtos_init_queue Error\n");
-	return WICED_ERROR;
-    }
-    worker_thread->thread = wiced_rtos_create_thread();
-    if ( wiced_rtos_init_thread( worker_thread->thread, priority , "worker thread", button_worker_thread_main, stack_size, (void*) worker_thread ) != WICED_SUCCESS )
-    {
-        //wiced_rtos_deinit_queue( worker_thread->event_queue );
-	WICED_BT_TRACE("wiced_rtos_init_thread Error\n");
-        return WICED_ERROR;
-    }
-
-    return WICED_SUCCESS;
-}
-
-/**
- * deletes Worker thread.
- *
- * @param     worker_thread   : pointer to button worker thread
- * @return    wiced_result_t  : result.
- */
-wiced_result_t button_delete_worker_thread( button_worker_thread_t* worker_thread )
-{
-    if ( wiced_rtos_delete_thread( worker_thread->thread ) != WICED_SUCCESS )
-    {
-        return WICED_ERROR;
-    }
-
-    if ( wiced_rtos_deinit_queue( worker_thread->event_queue ) != WICED_SUCCESS )
-    {
-        return WICED_ERROR;
-    }
-
-    return WICED_SUCCESS;
-}
-
-/**
- * pushes the event to the queue. event will be handled asynchronously from the queue
- *
- * @param     worker_thread   : pointer to button worker thread
- * @param     function        : function pointer to event handler
- * @param     arg             : arguments to be passed to the event handler.
- *
- * @return    wiced_result_t  : result.
- */
-wiced_result_t button_send_asynchronous_event( button_worker_thread_t* worker_thread, event_handler_t function, void* arg )
-{
-    button_event_message_t message;
-
-    message.function = function;
-    message.arg = arg;
-
-    return wiced_rtos_push_to_queue( worker_thread->event_queue, &message, WICED_NO_WAIT );
-}
-#endif

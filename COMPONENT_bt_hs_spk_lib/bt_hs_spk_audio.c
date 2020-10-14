@@ -182,6 +182,12 @@ wiced_bool_t bt_hs_spk_audio_bt_sniff_mode_allowance_check(wiced_bt_device_addre
         return WICED_FALSE;
     }
 
+    /* Check A2DP streaming is not started */
+    if (p_ctx->a2dp.is_streaming_started)
+    {
+        return WICED_FALSE;
+    }
+
     /* Check external app setting. */
     if (bt_hs_spk_audio_cb.is_audio_sink_streaming_suspended == WICED_TRUE)
     {
@@ -302,7 +308,40 @@ void bt_hs_spk_audio_streaming_recover(void)
     if ((bt_hs_spk_audio_cb.p_active_context) &&
         (bt_hs_spk_audio_cb.p_active_context->a2dp.interrupted == WICED_TRUE))
     {
-        bt_hs_spk_audio_button_handler_pause_play();
+        /* Start the streaming */
+        wiced_result_t result = WICED_ERROR;
+
+        /* Check if the AVRC is connected and if AVRC state is not updated to PLAYING state already,
+         * use the AVRC command to start the streaming. Otherwise, use AVDTP Start command. */
+        if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED &&
+                bt_hs_spk_audio_cb.p_active_context->a2dp.state != BT_HS_SPK_AUDIO_A2DP_STATE_STARTED)
+        {
+            result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0,
+                                                            NULL);
+        }
+        else
+        {
+            result = wiced_bt_a2dp_sink_start(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+        }
+
+        if (result == WICED_SUCCESS)
+        {
+            /* Update A2DP state. */
+            WICED_BT_TRACE("bt_hs_spk_audio_streaming_recover (state: %d -> %d)\n",
+                           bt_hs_spk_audio_cb.p_active_context->a2dp.state,
+                           BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING);
+
+            bt_hs_spk_audio_cb.p_active_context->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING;
+
+            /* To shorten the delay of start of the expected audio streaming, set the link
+             * to active mode. */
+            bt_hs_spk_control_bt_power_mode_set(WICED_TRUE,
+                                                bt_hs_spk_audio_cb.p_active_context->peerBda,
+                                                NULL);
+        }
 
         wiced_bt_a2dp_sink_streaming_configure_route(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
 

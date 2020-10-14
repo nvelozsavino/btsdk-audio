@@ -138,12 +138,26 @@ void ak4679_clock_setup( uint32_t sample_freq )
 
     /*PLL Slave Mode (BICK pin)*/
     ak4679_write_reg( AK4679_POWER_MANAGEMENT_0, 0x00 );
+
+#ifdef CONFIG_I2S_SLAVE
+    /*PLL Slave Mode*/
+    ak4679_write_reg( AK4679_PLL_MODE_SELECT_0, fs | MCKI_PLL_12MHZ );
+#else
+    /*PLL Master Mode*/
     ak4679_write_reg( AK4679_PLL_MODE_SELECT_0, fs | 0x02 );    //32fs
+#endif
+
     ak4679_write_reg( AK4679_AUDIO_IF_FORMAT_SELECT, AK4679_IF_FORMAT_I2S );
 
     ak4679_write_reg( AK4679_POWER_MANAGEMENT_0, AK4679_PMVCM );
     platform_ak4679_delay_ms(2);
+
+#ifdef CONFIG_I2S_SLAVE
+    ak4679_write_reg( AK4679_PLL_MODE_SELECT_1, AK4679_MS | AK4679_PMPLL );
+#else
     ak4679_write_reg( AK4679_PLL_MODE_SELECT_1, AK4679_PMPLL );
+#endif
+
     platform_ak4679_delay_ms(2);
 }
 
@@ -570,4 +584,44 @@ void wiced_bt_ak4679_start_adc_and_dac(uint32_t sample_freq)
     ak4679_write_reg( AK4679_POWER_MANAGEMENT_2,        AK4679_PMMP1 );
     /* HFP expects Mic data in left ch,if right channel used duplicate to left*/
     ak4679_write_reg( AK4679_POWER_MANAGEMENT_0,        AK4679_PMADR | AK4679_PMPFIL | AK4679_PMVCM );
+}
+
+/* ****************************************************************************
+ * Function: wiced_bt_ak4679_start_capture
+ *          Start record from LIN2/RIN2
+ *
+ * Parameters:
+ *         sample_freq
+ *           Sample frequency in HZ
+ * ***************************************************************************/
+void wiced_bt_ak4679_start_capture(uint32_t sample_freq)
+{
+    WICED_BT_TRACE(" wiced_bt_ak4679_start_capture SF %d\n", sample_freq);
+
+    wiced_bt_ak4679_start(sample_freq);
+
+    ak4679_write_reg( AK4679_MIC_AMP_GAIN,              0xaa ); //see DS for mic gain settings
+
+    /* Auto level control, 5-equalizer */
+    ak4679_write_reg( AK4679_MODE_CONTROL_0, AK4679_ALC | AK4679_5EQ );
+
+    /* ADC power Lch/Rch, Power of filter, Voltage common output (VCOM) */
+    ak4679_write_reg( AK4679_POWER_MANAGEMENT_0, AK4679_PMADR | AK4679_PMADL | AK4679_PMPFIL | AK4679_PMVCM );
+
+#ifdef USE_LIN1_RIN1_FOR_A2DP_SOURCE
+    /* For A2DP source, enable both L/R */
+    ak4679_write_reg( AK4679_MIC_SIGNAL_SELECT,         AK4679_LIN1  | AK4679_RIN1 ); //choose mic inputs, LIN1/RIN1
+    ak4679_write_reg( AK4679_POWER_MANAGEMENT_2,        AK4679_PMMP1 | AK4679_PMMP2); //enable mic pwr supply pins 1 & 2
+#else
+    /* Power of DAC and EQ */
+    ak4679_write_reg( AK4679_POWER_MANAGEMENT_1,        AK4679_PMDAR | AK4679_PMDAL | AK4679_PMEQ );
+
+    ak4679_write_reg( AK4679_MODE_CONTROL_1,            AK4679_OVTMB | AK4679_OVTM ); //allow independent volume control of each speaker
+
+    /* MIC source */
+    ak4679_write_reg( AK4679_MIC_SIGNAL_SELECT,         AK4679_LIN2  | AK4679_RIN2 ); //choose mic inputs, LIN2/RIN2
+
+    /* MIC power 2 (for LIN2/RIN2) */
+    ak4679_write_reg( AK4679_POWER_MANAGEMENT_2, AK4679_PMMP2 );
+#endif
 }
