@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -52,6 +52,7 @@
 **  External Definitions
 *****************************************************************************/
 
+#ifndef BTSTACK_VER
 extern void GKI_init_q (BUFFER_Q *p_q);
 extern void *GKI_dequeue (BUFFER_Q *p_q);
 extern void GKI_enqueue (BUFFER_Q *p_q, void *p_buf);
@@ -59,6 +60,7 @@ extern wiced_bool_t GKI_queue_is_empty(BUFFER_Q *p_q);
 extern void *GKI_getfirst (BUFFER_Q *p_q);
 extern void *GKI_getnext (void *p_buf);
 extern void *GKI_remove_from_queue (BUFFER_Q *p_q, void *p_buf);
+#endif // !BTSTACK_VER
 
 /* AT command interpreter states */
 enum
@@ -230,7 +232,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_init(wiced_bt_hfp_hf_scb_t *p_scb)
     wiced_result_t result;
 
     WICED_BTHFP_TRACE("%s: AT command send queue initialized\n", __FUNCTION__);
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_init_q (&p_scb->wiced_bt_hfp_hf_at_cmd_queue, NULL);
+#else // BTSTACK_VER
     GKI_init_q (&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#endif // BTSTACK_VER
     p_scb->wiced_bt_hfp_hf_at_cmd_queue_depth = 0;
     result = wiced_init_timer (&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer, wiced_bt_hfp_hf_at_timer_cback, (uint32_t) p_scb, WICED_MILLI_SECONDS_TIMER);
 
@@ -250,7 +256,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_free(wiced_bt_hfp_hf_scb_t *p_scb)
 
     wiced_stop_timer(&p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer);
 
+#if BTSTACK_VER >= 0x01020000
+    while((p_buf = (BT_HDR *)wiced_bt_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue)) != NULL)
+#else // BTSTACK_VER
     while((p_buf = (BT_HDR *)GKI_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue)) != NULL)
+#endif // BTSTACK_VER
     {
         wiced_bt_free_buffer(p_buf);
     }
@@ -273,7 +283,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_enqueue(wiced_bt_hfp_hf_scb_t *p_scb,
         p_data->len = len;
         p_data->layer_specific = cmd;
         memcpy((uint8_t *)(p_data+1), buf, len);
+#if BTSTACK_VER >= 0x01020000
+        wiced_bt_enqueue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue, (wiced_bt_buffer_t *)p_data);
+#else // BTSTACK_VER
         GKI_enqueue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue, (void *)p_data);
+#endif // BTSTACK_VER
         p_scb->wiced_bt_hfp_hf_at_cmd_queue_depth++;
 
         /*send if 1st (and only) command in the queue*/
@@ -302,7 +316,11 @@ uint8_t wiced_bt_hfp_hf_at_cmd_queue_handle_res(wiced_bt_hfp_hf_scb_t *p_scb)
     /* Reset AT command retransmission info. */
     wiced_bt_hfp_hf_at_cmd_retrans_info_reset();
 
+#if BTSTACK_VER >= 0x01020000
+    p_data = (BT_HDR *)wiced_bt_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#else // BTSTACK_VER
     p_data = (BT_HDR *)GKI_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#endif // BTSTACK_VER
 
     if(p_data)
     {
@@ -319,7 +337,11 @@ uint8_t wiced_bt_hfp_hf_at_cmd_queue_handle_res(wiced_bt_hfp_hf_scb_t *p_scb)
             __FUNCTION__);
     }
 
+#if BTSTACK_VER >= 0x01020000
+    if (!wiced_bt_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#else // BTSTACK_VER
     if (!GKI_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#endif
         wiced_bt_hfp_hf_at_cmd_queue_send(p_scb);
 
     return at_cmd_id;
@@ -335,7 +357,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_flush(wiced_bt_hfp_hf_scb_t *p_scb)
 
     wiced_stop_timer( &p_scb->wiced_bt_hfp_hf_at_cmd_queue_timer );
 
+#if BTSTACK_VER >= 0x01020000
+    while((p_buf = (BT_HDR *)wiced_bt_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue)) != NULL)
+#else // BTSTACK_VER
     while((p_buf = (BT_HDR *)GKI_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue)) != NULL)
+#endif // BTSTACK_VER
     {
         wiced_bt_free_buffer(p_buf);
     }
@@ -352,7 +378,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_send(wiced_bt_hfp_hf_scb_t *p_scb)
 {
     char      data[WICED_BT_HFP_HF_AT_MAX_LEN + 16] = {'\0'};
     uint16_t  len;
+#if BTSTACK_VER >= 0x01020000
+    BT_HDR   *p_buf = (BT_HDR *)wiced_bt_getfirst(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#else // BTSTACK_VER
     BT_HDR   *p_buf = (BT_HDR *)GKI_getfirst(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#endif // BTSTACK_VER
     wiced_bt_rfcomm_result_t result;
     wiced_result_t status;
 
@@ -365,7 +395,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_send(wiced_bt_hfp_hf_scb_t *p_scb)
     memcpy(data, (uint8_t *)(p_buf+1),p_buf->len);
 
     /* Send to RFCOMM */
+#if BTSTACK_VER >= 0x01020000
+    result = wiced_bt_rfcomm_write_data(p_scb->rfcomm_handle, data, p_buf->len);
+#else // BTSTACK_VER
     result = wiced_bt_rfcomm_write_data(p_scb->rfcomm_handle, data, p_buf->len, &len);
+#endif // BTSTACK_VER
 
     WICED_BTHFP_TRACE("%s: Sending AT cmd: %s (%d)\n", __FUNCTION__, data, result);
 
@@ -399,7 +433,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_timeout(wiced_bt_hfp_hf_scb_t *p_scb)
                       wiced_bt_hfp_hf_at_retrans_info.num);
 
     /* Check if the AT command queue is empty. */
+#if BTSTACK_VER >= 0x01020000
+    if (wiced_bt_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#else // BTSTACK_VER
     if (GKI_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#endif // BTSTACK_VER
     {   // AT command queue is empty.
         /* Reset At command retransmission info. and discard the operation.*/
         wiced_bt_hfp_hf_at_cmd_retrans_info_reset();
@@ -411,7 +449,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_timeout(wiced_bt_hfp_hf_scb_t *p_scb)
     if (wiced_bt_hfp_hf_at_retrans_info.num >= WICED_BT_HFP_HF_AT_CMD_RETRANS_MAX_NUM)
     {   // Exceed the maximum retransmission number.
         /* Discard the AT command that cannot be transmitted. */
+#if BTSTACK_VER >= 0x01020000
+        p_data = (BT_HDR *)wiced_bt_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#else // BTSTACK_VER
         p_data = (BT_HDR *)GKI_dequeue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#endif // BTSTACK_VER
 
         if(p_data)
         {
@@ -423,7 +465,11 @@ void wiced_bt_hfp_hf_at_cmd_queue_timeout(wiced_bt_hfp_hf_scb_t *p_scb)
         wiced_bt_hfp_hf_at_cmd_retrans_info_reset();
 
         /* Transmit next AT command if there is. */
+#if BTSTACK_VER >= 0x01020000
+        if (!wiced_bt_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#else // BTSTACK_VER
         if (!GKI_queue_is_empty(&p_scb->wiced_bt_hfp_hf_at_cmd_queue))
+#endif // BTSTACK_VER
         {
             wiced_bt_hfp_hf_at_cmd_queue_send(p_scb);
         }
@@ -445,18 +491,30 @@ void wiced_bt_hfp_hf_at_cmd_queue_timeout(wiced_bt_hfp_hf_scb_t *p_scb)
 void wiced_bt_hfp_hf_at_cmd_flush_cmd_in_queue(wiced_bt_hfp_hf_scb_t *p_scb, uint8_t cmd)
 {
     /* Ignore the first element, as we might have already sent it over the air */
+#if BTSTACK_VER >= 0x01020000
+    BT_HDR *p_buf = (BT_HDR *)wiced_bt_getfirst(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#else // BTSTACK_VER
     BT_HDR *p_buf = (BT_HDR *)GKI_getfirst(&p_scb->wiced_bt_hfp_hf_at_cmd_queue);
+#endif // BTSTACK_VER
 
 
     while(p_buf)
     {
+#if BTSTACK_VER >= 0x01020000
+        p_buf = (BT_HDR *)wiced_bt_getnext((wiced_bt_buffer_t *) p_buf);
+#else // BTSTACK_VER
         p_buf = (BT_HDR *)GKI_getnext(p_buf);
+#endif // BTSTACK_VER
         if(p_buf)
         {
             if(cmd == p_buf->layer_specific)
             {
                 WICED_BTHFP_TRACE("Removing AT cmd %d from queue\n", cmd);
+#if BTSTACK_VER >= 0x01020000
+                wiced_bt_remove_from_queue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue, (wiced_bt_buffer_t *) p_buf);
+#else // BTSTACK_VER
                 GKI_remove_from_queue(&p_scb->wiced_bt_hfp_hf_at_cmd_queue, p_buf);
+#endif // BTSTACK_VER
                 p_scb->wiced_bt_hfp_hf_at_cmd_queue_depth--;
                 wiced_bt_free_buffer(p_buf);
                 return;

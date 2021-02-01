@@ -1,10 +1,10 @@
 /**
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -237,22 +237,28 @@ wiced_result_t wiced_led_manager_reconfig_led( wiced_led_config_t* config)
  */
 void led_timer_function(uint32_t arg)
 {
-	if(led_timer[arg].led_state == WICED_TRUE)
-	{
-		//WICED_BT_TRACE("Timer led %d stop\n",led_timer[arg].led);
-		platform_led_stop(&platform_led_config[led_timer[arg].led]);
-		led_timer[arg].led_state = WICED_FALSE;
-	}
-	else
-	{
-		platform_led_start( &platform_led_config[led_timer[arg].led]);
-		//WICED_BT_TRACE("Timer led %d start\n",led_timer[arg].led);
-		led_timer[arg].led_state = WICED_TRUE;
-	}
+    wiced_result_t status;
 
-	wiced_stop_timer(&led_timer[arg].timer);
-    wiced_start_timer(&led_timer[arg].timer, \
+    if(led_timer[arg].led_state == WICED_TRUE)
+    {
+        //WICED_BT_TRACE("Timer led %d stop\n",led_timer[arg].led);
+        platform_led_stop(&platform_led_config[led_timer[arg].led]);
+        led_timer[arg].led_state = WICED_FALSE;
+    }
+    else
+    {
+        platform_led_start( &platform_led_config[led_timer[arg].led]);
+        //WICED_BT_TRACE("Timer led %d start\n",led_timer[arg].led);
+        led_timer[arg].led_state = WICED_TRUE;
+    }
+
+    wiced_stop_timer(&led_timer[arg].timer);
+    status = wiced_start_timer(&led_timer[arg].timer, \
                       led_timer[arg].led_state == WICED_TRUE ? led_timer[arg].on_period : led_timer[arg].off_period);
+    if (status != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("%s: wiced_start_timer failed, status:%d \n", __func__, status);
+    }
 }
 
 /**

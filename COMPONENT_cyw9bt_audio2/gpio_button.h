@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -44,7 +44,6 @@ extern "C" {
 #endif
 
 #include "wiced.h"
-#include"data_types.h"
 #include "wiced_rtos.h"
 #include"wiced_hal_gpio.h"
 
@@ -52,6 +51,19 @@ extern "C" {
 /******************************************************
  *                     Macros
  ******************************************************/
+#if BTSTACK_VER >= 0x01020000
+/* Pin configuration */
+#define GPIO_PULL_UP           WICED_GPIO_PULL_UP
+#define GPIO_PULL_DOWN         WICED_GPIO_PULL_DOWN
+#define GPIO_PULL_UP_DOWN_NONE WICED_GPIO_PULL_UP_DOWN_NONE
+/* GPIO interrupt trigger */
+#define GPIO_EN_INT_RISING_EDGE  WICED_GPIO_EN_INT_RISING_EDGE
+#define GPIO_EN_INT_FALLING_EDGE WICED_GPIO_EN_INT_FALLING_EDGE
+#define GPIO_EN_INT_BOTH_EDGE    WICED_GPIO_EN_INT_BOTH_EDGE
+#define GPIO_EN_INT_LEVEL_HIGH   WICED_GPIO_EN_INT_LEVEL_HIGH
+#define GPIO_EN_INT_LEVEL_LOW    WICED_GPIO_EN_INT_LEVEL_LOW
+#endif
+
 
 /******************************************************
  *                    Constants

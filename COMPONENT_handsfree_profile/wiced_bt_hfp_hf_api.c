@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -39,15 +39,13 @@
 #include "wiced_bt_hfp_hf_int.h"
 #include "string.h"
 #include "wiced_bt_utils.h"
+#include "wiced_memory.h"
 
 #ifdef CYW20706A2
 #define WICED_ALREADY_INITIALIZED	1000
 #endif
 
 #define GKI_send_msg(a,b,p_msg) wiced_bt_hfp_hf_hdl_event((BT_HDR *)p_msg)
-
-extern void wiced_bt_free_buffer( void *p_buf );
-extern void* wiced_bt_get_buffer( uint16_t size );
 
 static wiced_result_t wiced_bt_hfp_hf_init_check_and_alloc_buffer ( uint32_t buf_size, void** p_buf )
 {

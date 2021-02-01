@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -43,13 +43,10 @@
 #include "wiced_transport.h"
 #include "wiced_bt_sdp.h"
 #include "wiced_hal_nvram.h"
-#if defined(CYW20706A2) || defined(CYW43012C0)
+#if defined(CYW20706A2)
 #include "wiced_hal_platform.h"
 #else
 #include "wiced_platform.h"
-#endif
-#ifndef CYW43012C0
-#include "wiced_hal_mia.h"
 #endif
 
 #include "wiced_bt_a2dp_sink.h"
@@ -60,11 +57,15 @@
 #include "wiced_bt_stack.h"
 #include "wiced_memory.h"
 #include "wiced_rtos.h"
+#ifndef CYW55572A0
 #include "wiced_hal_pspi.h"
 #include "wiced_hal_pcm.h"
+#endif
 #include "wiced_hal_gpio.h"
 #include "wiced_platform.h"
+#ifndef CYW43012C0
 #include "GeneratedSource/cycfg_pins.h"
+#endif
 
 #include "wiced_bt_codec_cs47l35.h"
 
@@ -128,7 +129,11 @@
 #define CODEC_IN2L_CONTROL                  0x0318
 #define CODEC_IN2R_CONTROL                  0x031C
 
-#define iocfg_fcn_p0_adr                               0x00338400
+#ifdef CYW43012C0
+#define iocfg_fcn_p0_adr                    0x00438400
+#else
+#define iocfg_fcn_p0_adr                    0x00338400
+#endif
 
 static uint8_t p_spi_tx_buffer[CODEC_SPI_DATA32_SIZE];
 static wiced_bool_t codec_cs47l35_initialized = WICED_FALSE;
@@ -140,11 +145,20 @@ void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs);
 
 void platform_bham_codec_marley_ctrl_bus_init(void)
 {
+#ifndef CYW55572A0
     if (codec_cs47l35_initialized == WICED_FALSE)
     {
+#ifdef CYW43012C0
+        wiced_platform_ptu_sel_t ptu_sel_temp = wiced_platform_get_ptu_fifo();
+        wiced_platform_set_ptu_fifo(WICED_PLATFORM_PTU_SEL_SPIFFY);
+        wiced_hal_pspi_init(SPI_MASTER_ROLE, BHAM_SPI_FREQUENCY, SPI_MSB_FIRST, SPI_SS_ACTIVE_LOW, SPI_MODE_0);
+        REG32(iocfg_fcn_p0_adr + (4 * SPI_CS)) = 0;
+        wiced_hal_gpio_configure_pin(SPI_CS, GPIO_OUTPUT_ENABLE, GPIO_PIN_OUTPUT_LOW);
+#else
         wiced_hal_pspi_init(SPI2, BHAM_SPI_FREQUENCY, SPI_MSB_FIRST, SPI_SS_ACTIVE_LOW, SPI_MODE_0);
         REG32(iocfg_fcn_p0_adr + (4 * SPI_CS)) = 0;
         wiced_hal_gpio_configure_pin(SPI_CS, GPIO_OUTPUT_ENABLE, GPIO_PIN_OUTPUT_LOW);
+#endif
 
         driver_codec_reset();
         wiced_rtos_delay_milliseconds(10, ALLOW_THREAD_TO_SLEEP);
@@ -157,63 +171,84 @@ void platform_bham_codec_marley_ctrl_bus_init(void)
                 id = driver_codec_id_get();
                 if (id == CODEC_MARLEY_ID)
                 {
-                    WICED_BT_TRACE("Codec CS47L35 detected\n");
+                    CS47L35_TRACE("Codec CS47L35 detected\n");
                 }
                 else
                 {
-                    WICED_BT_TRACE("Codec CS47L35 not detected 0x%x\n", id);
+                    CS47L35_TRACE("Codec CS47L35 not detected 0x%x\n", id);
                 }
                 break;
             }
             else
             {
-                WICED_BT_TRACE("Codec CS47L35 not detected\n");
+                CS47L35_TRACE("Codec CS47L35 not detected\n");
                 wiced_rtos_delay_milliseconds(100, ALLOW_THREAD_TO_SLEEP);
             }
         }
         codec_write_reg_config( power_up_codec_config, power_up_codec_config_len);
 
+#ifdef CYW43012C0
+        wiced_platform_set_ptu_fifo(ptu_sel_temp);
+#endif
+
         codec_cs47l35_initialized = WICED_TRUE;
     }
+#endif
 }
 
 void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, const uint8_t *p_tx_buffer)
 {
+#ifndef CYW55572A0
     uint8_t p_spi_tx_buffer[6];
 
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
     p_spi_tx_buffer[0] = (uint8_t) BYTE3(address);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
-    p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
     p_spi_tx_buffer[2] = (uint8_t) BYTE1(address);
     p_spi_tx_buffer[3] = (uint8_t) BYTE0(address);
     p_spi_tx_buffer[4] = (uint8_t) 0; /* 16-bit padding phase */
     p_spi_tx_buffer[5] = (uint8_t) 0; /* 16-bit padding phase */
+#ifdef CYW43012C0
+    /* Send address */
+    wiced_hal_pspi_tx_data(6, p_spi_tx_buffer);
+    /* Write data */
+    wiced_hal_pspi_tx_data(tx_length, p_tx_buffer);
+#else
     /* Send address */
     wiced_hal_pspi_tx_data(SPI2, 6, p_spi_tx_buffer);
     /* Write data */
     wiced_hal_pspi_tx_data(SPI2, tx_length, p_tx_buffer);
+#endif
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_HIGH);
+#endif
 }
 
 void platform_bham_codec_marley_read_cmd(uint32_t address, uint16_t rx_length, uint8_t *p_rx_buffer)
 {
+#ifndef CYW55572A0
     uint8_t p_spi_tx_buffer[6];
 
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
     /* force read / write bit to read */
     p_spi_tx_buffer[0] = (uint8_t) (BYTE3(address) | 0x80);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
-    p_spi_tx_buffer[1] = (uint8_t) BYTE2(address);
     p_spi_tx_buffer[2] = (uint8_t) BYTE1(address);
     p_spi_tx_buffer[3] = (uint8_t) BYTE0(address);
     p_spi_tx_buffer[4] = (uint8_t) 0; /* 16-bit padding phase */
     p_spi_tx_buffer[5] = (uint8_t) 0; /* 16-bit padding phase */
+#ifdef CYW43012C0
+    /* Send address */
+    wiced_hal_pspi_tx_data(6, p_spi_tx_buffer);
+    /* Read data */
+    wiced_hal_pspi_rx_data(rx_length, p_rx_buffer);
+#else
     /* Send address */
     wiced_hal_pspi_tx_data(SPI2, 6, p_spi_tx_buffer);
     /* Read data */
     wiced_hal_pspi_rx_data(SPI2, rx_length, p_rx_buffer);
+#endif
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_HIGH);
+#endif
 }
 
 void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs)
@@ -225,7 +260,7 @@ void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs)
         //special cse inserted into reg config to add a delay
         if( (reg_cfgs[i].addr == 0xffff) && (reg_cfgs[i].val == 0) )
         {
-            WICED_BT_TRACE("INSERT_DELAY_MS\n");
+            CS47L35_TRACE("INSERT_DELAY_MS\n");
             wiced_rtos_delay_milliseconds(10, ALLOW_THREAD_TO_SLEEP);
             continue;
         }
@@ -237,18 +272,27 @@ void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs)
 
 void driver_codec_mute_disable_all_output(void)
 {
+#ifdef CYW43012C0
+    wiced_platform_ptu_sel_t ptu_sel_temp = wiced_platform_get_ptu_fifo();
+    wiced_platform_set_ptu_fifo(WICED_PLATFORM_PTU_SEL_SPIFFY);
+#endif
+
     /* Mute all outputs */
     driver_codec_write16(0x415, 0x168);
     driver_codec_write16(0x429, 0x100);
     driver_codec_write16(0x411, 0x368);
     /* disable all outputs */
     driver_codec_write16(0x400, 0);
+
+#ifdef CYW43012C0
+    wiced_platform_set_ptu_fifo(ptu_sel_temp);
+#endif
 }
 
 
 void driver_codec_reset(void)
 {
-    WICED_BT_TRACE("DRIVER_CODEC reset\n");
+    CS47L35_TRACE("DRIVER_CODEC reset\n");
 
     /* SW reset codec */
     driver_codec_write16(0x0, 0);
@@ -269,7 +313,7 @@ void driver_codec_register_write(uint32_t address, uint32_t value)
 
 void driver_codec_write16(uint32_t address, uint16_t value)
 {
-    //WICED_BT_TRACE("DRIVER_CODEC W16 %04X:%04X\n", (uint32_t)address, (uint32_t)value);
+    //CS47L35_TRACE("DRIVER_CODEC W16 %04X:%04X\n", (uint32_t)address, (uint32_t)value);
     p_spi_tx_buffer[0] = (uint8_t) BYTE1(value);
     p_spi_tx_buffer[1] = (uint8_t) BYTE0(value);
     /* Send data with SPI */
@@ -278,7 +322,7 @@ void driver_codec_write16(uint32_t address, uint16_t value)
 
 void driver_codec_write32(uint32_t address, uint32_t value)
 {
-    //WICED_BT_TRACE("DRIVER_CODEC W32 %X:%X\n", (uint32_t)address, (uint32_t)value);
+    //CS47L35_TRACE("DRIVER_CODEC W32 %X:%X\n", (uint32_t)address, (uint32_t)value);
     p_spi_tx_buffer[0] = (uint8_t) BYTE3(value);
     p_spi_tx_buffer[1] = (uint8_t) BYTE2(value);
     p_spi_tx_buffer[2] = (uint8_t) BYTE1(value);
@@ -313,13 +357,14 @@ uint16_t driver_codec_read16(uint32_t address)
     value = (uint16_t)p_spi_rx_buffer[0];
     value <<= 8;
     value |= p_spi_rx_buffer[1];
-    WICED_BT_TRACE("DRIVER_CODEC R16 %X:%04X\n", address, value);
+    CS47L35_TRACE("DRIVER_CODEC R16 %X:%04X\n", address, value);
 
     return value;
 }
 
 uint32_t driver_codec_read32(uint32_t address)
 {
+#ifndef CYW55572A0
     uint8_t p_spi_rx_buffer[CODEC_SPI_DATA32_SIZE];
     uint32_t value;
 
@@ -332,9 +377,12 @@ uint32_t driver_codec_read32(uint32_t address)
     value |= p_spi_rx_buffer[2];
     value <<=8;
     value |= p_spi_rx_buffer[3];
-    WICED_BT_TRACE("DRIVER_CODEC R32 %X:%08X\n", address, (uint32_t)value);
+    CS47L35_TRACE("DRIVER_CODEC R32 %X:%08X\n", address, (uint32_t)value);
 
     return value;
+#else
+    return 0;
+#endif
 }
 
 uint16_t driver_codec_id_get(void)
@@ -342,7 +390,7 @@ uint16_t driver_codec_id_get(void)
     uint16_t id;
 
     id = driver_codec_read16(0x0);
-    WICED_BT_TRACE("DRIVER_CODEC id: 0x%04X\n", (uint32_t)id);
+    CS47L35_TRACE("DRIVER_CODEC id: 0x%04X\n", (uint32_t)id);
 
     return id;
 }
@@ -351,7 +399,7 @@ uint8_t driver_codec_nirq_check(void)
 {
     uint16_t reg;
 
-    //WICED_BT_TRACE("DRIVER_CODEC check nirq\n");
+    //CS47L35_TRACE("DRIVER_CODEC check nirq\n");
     reg = driver_codec_read16(CODEC_BOOT_DONE_EINT1_ADD);
     if (reg)
     {
@@ -359,7 +407,7 @@ uint8_t driver_codec_nirq_check(void)
         driver_codec_write16(CODEC_BOOT_DONE_EINT1_ADD, reg);
         if (reg & CODEC_BOOT_DONE_EINT1_MASK)
         {
-            WICED_BT_TRACE("CODEC BOOT DONE\n");
+            CS47L35_TRACE("CODEC BOOT DONE\n");
             return 1;
         }
     }
@@ -369,6 +417,11 @@ uint8_t driver_codec_nirq_check(void)
 
 void wiced_bt_codec_cs47l35_init(cs47l35_stream_type_t stream_type, uint32_t sample_rate)
 {
+#ifdef CYW43012C0
+    wiced_platform_ptu_sel_t ptu_sel_temp = wiced_platform_get_ptu_fifo();
+    wiced_platform_set_ptu_fifo(WICED_PLATFORM_PTU_SEL_SPIFFY);
+#endif
+
     switch (stream_type)
     {
         case CS47L35_STREAM_A2DP:
@@ -387,6 +440,10 @@ void wiced_bt_codec_cs47l35_init(cs47l35_stream_type_t stream_type, uint32_t sam
             break;
     }
     codec_cs47l35_set_sample_rate(sample_rate);
+
+#ifdef CYW43012C0
+    wiced_platform_set_ptu_fifo(ptu_sel_temp);
+#endif
 }
 
 /* Set output volume
@@ -400,12 +457,12 @@ void wiced_bt_codec_cs47l35_init(cs47l35_stream_type_t stream_type, uint32_t sam
     Return:                 N/A
 
     Output Path 1 Digital Volume
-    –64 dB to +31.5 dB in 0.5-dB steps
-    0x00 = –64dB
-    0x01 = –63.5dB
-    … (0.5-dB steps)
+    -64 dB to +31.5 dB in 0.5-dB steps
+    0x00 = -64dB
+    0x01 = -63.5dB
+    ... (0.5-dB steps)
     0x80 = 0 dB
-    … (0.5-dB steps)
+    ... (0.5-dB steps)
     0xBF = +31.5 dB
 */
 void wiced_bt_codec_cs47l35_set_output_volume(uint8_t left_vol, uint8_t right_vol)
@@ -415,7 +472,12 @@ void wiced_bt_codec_cs47l35_set_output_volume(uint8_t left_vol, uint8_t right_vo
     uint16_t left_mute = (left_vol == 0) ? 1 : 0;
     uint16_t right_mute = (right_vol == 0) ? 1 : 0;
 
-    WICED_BT_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
+#ifdef CYW43012C0
+    wiced_platform_ptu_sel_t ptu_sel_temp = wiced_platform_get_ptu_fifo();
+    wiced_platform_set_ptu_fifo(WICED_PLATFORM_PTU_SEL_SPIFFY);
+#endif
+
+    CS47L35_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
 
     if (left_vol > 0xbf || right_vol > 0xbf)
     {
@@ -430,13 +492,22 @@ void wiced_bt_codec_cs47l35_set_output_volume(uint8_t left_vol, uint8_t right_vo
 
     reg = (uint16_t) right_vol | (right_mute << 8) | 0x1 << 9;
     driver_codec_write16(CODEC_DAC_DIGITAL_VOLUME_4L, reg);
+
+#ifdef CYW43012C0
+    wiced_platform_set_ptu_fifo(ptu_sel_temp);
+#endif
 }
 
 void wiced_bt_codec_cs47l35_set_input_volume(uint8_t left_vol, uint8_t right_vol)
 {
     uint16_t reg;
 
-    WICED_BT_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
+#ifdef CYW43012C0
+    wiced_platform_ptu_sel_t ptu_sel_temp = wiced_platform_get_ptu_fifo();
+    wiced_platform_set_ptu_fifo(WICED_PLATFORM_PTU_SEL_SPIFFY);
+#endif
+
+    CS47L35_TRACE("%s left_vol:%d right_vol:%d\n", __FUNCTION__, left_vol, right_vol);
 
     if (left_vol > 31)
     {
@@ -459,6 +530,10 @@ void wiced_bt_codec_cs47l35_set_input_volume(uint8_t left_vol, uint8_t right_vol
 
     reg = 0x8000 | ((right_vol + 0x40) << 1);
     driver_codec_write16(CODEC_IN2R_CONTROL, reg);
+
+#ifdef CYW43012C0
+    wiced_platform_set_ptu_fifo(ptu_sel_temp);
+#endif
 }
 
 void wiced_bt_codec_cs47l35_set_sink(cs47l35_output_t output)

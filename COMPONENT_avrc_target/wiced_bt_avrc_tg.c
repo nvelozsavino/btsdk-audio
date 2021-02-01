@@ -1,10 +1,10 @@
 /**
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -66,6 +66,14 @@
 
 static wiced_bt_avrc_tg_cb_t wiced_bt_avrc_tg_cb;
 extern const wiced_bt_cfg_settings_t wiced_bt_cfg_settings;
+#if BTSTACK_VER >= 0x01020000
+/* NOTE: helper function from avrc_controller component */
+extern void wiced_avrc_send_or_enqueue(uint8_t handle, uint8_t label, uint8_t ctype, wiced_bt_avrc_xmit_buf_t* p_msgbuf);
+extern wiced_bt_avrc_sts_t wiced_avrc_build_and_send_metadata_cmd(void* p_cmd, uint8_t ctype, uint8_t handle, uint8_t label);
+extern wiced_bt_avrc_sts_t wiced_avrc_build_metadata_rsp(uint8_t handle, void* p_rsp, wiced_bt_avrc_xmit_buf_t** p_rspbuf);
+extern wiced_bt_avrc_sts_t wiced_avrc_build_and_send_metadata_rsp(void* p_rsp, uint8_t ctype, uint8_t handle, uint8_t label);
+extern void wiced_bt_avrc_xmitted_cback(uint8_t handle, wiced_bt_avrc_xmit_buf_t* p_buf, wiced_bool_t sent_ok);
+#endif
 extern void AVCT_Register(uint16_t mtu, uint16_t mtu_br, uint8_t sec_mask);
 wiced_result_t wiced_bt_avrc_tg_open(wiced_bt_device_address_t peer_addr);
 wiced_bt_device_address_t null_bda = {0,0,0,0,0,0};
@@ -163,7 +171,9 @@ uint8_t wiced_bt_avrc_tg_is_peer_absolute_volume_capable( void )
 static void wiced_bt_avrc_tg_get_capabilities(void)
 {
     wiced_bt_avrc_command_t cmd;
+#ifndef BTSTACK_VER
     BT_HDR *p_pkt = NULL;
+#endif
 
     WICED_BTAVRCP_TRACE( "%s: avrc_hdl=0x%x \n\r", __FUNCTION__, wiced_bt_avrc_tg_cb.avrc_handle );
 
@@ -176,6 +186,13 @@ static void wiced_bt_avrc_tg_get_capabilities(void)
     cmd.get_caps.opcode         = AVRC_OP_VENDOR;
     cmd.get_caps.capability_id  = AVRC_CAP_EVENTS_SUPPORTED;
 
+#if BTSTACK_VER >= 0x01020000
+    uint8_t  label = 1; /* TODO: Need to do transaction label accounting. */
+    if (wiced_avrc_build_and_send_metadata_cmd(&cmd, AVRC_CMD_STATUS, wiced_bt_avrc_tg_cb.avrc_handle, label) != AVRC_STS_NO_ERROR)
+    {
+        /* TODO: Message not sent. Need to release the label */
+    }
+#else
     if (AVRC_STS_NO_ERROR == wiced_bt_avrc_bld_command( &cmd, &p_pkt))
     {
         uint8_t  label = 1; /* TODO: Need to do transaction label accounting. */
@@ -184,6 +201,7 @@ static void wiced_bt_avrc_tg_get_capabilities(void)
             /* TODO: Message not sent. Need to release the label */
         }
     }
+#endif
 }
 
 /*******************************************************************************
@@ -321,7 +339,9 @@ wiced_bool_t wiced_bt_avrc_tg_sdp_find_service(BD_ADDR bd_addr)
 void wiced_bt_avrc_tg_register_for_notification( uint8_t event_id )
 {
     wiced_bt_avrc_command_t cmd;
+#ifndef BTSTACK_VER
     BT_HDR *p_pkt = NULL;
+#endif
 
     WICED_BTAVRCP_TRACE("%s: event_id %d handle %d\n\r", __FUNCTION__, event_id, wiced_bt_avrc_tg_cb.avrc_handle);
 
@@ -333,6 +353,13 @@ void wiced_bt_avrc_tg_register_for_notification( uint8_t event_id )
         cmd.reg_notif.event_id = event_id;
         cmd.reg_notif.param    = 0;
 
+#if BTSTACK_VER >= 0x01020000
+        uint8_t label = 5; /* TODO: Need to do transaction label accounting. */
+        if (wiced_avrc_build_and_send_metadata_cmd(&cmd, AVRC_CMD_NOTIF, wiced_bt_avrc_tg_cb.avrc_handle, label) != AVRC_STS_NO_ERROR)
+        {
+            /* TODO: Message not sent. Need to release the label */
+        }
+#else
         if ( AVRC_STS_NO_ERROR == wiced_bt_avrc_bld_command( &cmd, &p_pkt ) )
         {
             uint8_t label = 5; /* TODO: Need to do transaction label accounting. */
@@ -341,6 +368,7 @@ void wiced_bt_avrc_tg_register_for_notification( uint8_t event_id )
                 /* TODO: Message not sent. Need to release the label */
             }
         }
+#endif
     }
 }
 
@@ -647,9 +675,17 @@ void wiced_bt_avrc_tg_response_handler(uint8_t handle, uint8_t label, uint8_t op
 
 ** Description    Handle get capabilities command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_get_capabilities_handler(uint8_t handle, wiced_bt_avrc_get_caps_cmd_t *get_cap, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_get_capabilities_handler(uint8_t handle, wiced_bt_avrc_get_caps_cmd_t *get_cap, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     wiced_bt_avrc_sts_t avrc_status;
     uint8_t *p_cap_list = NULL;
     uint32_t byte_count = 0;
@@ -685,7 +721,11 @@ BT_HDR * wiced_bt_avrc_tg_get_capabilities_handler(uint8_t handle, wiced_bt_avrc
                    byte_count);
     }
 
+#if BTSTACK_VER >= 0x01020000
+    avrc_status = wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
     avrc_status = wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
     if (AVRC_STS_NO_ERROR != avrc_status)
     {
         WICED_BTAVRCP_TRACE( "%s failed to create response: %d\n\r", __FUNCTION__, avrc_status);
@@ -701,11 +741,21 @@ BT_HDR * wiced_bt_avrc_tg_get_capabilities_handler(uint8_t handle, wiced_bt_avrc
 
 ** Description    Handle get element attribute command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_get_element_attr_handler(uint8_t handle,
+        wiced_bt_avrc_get_elem_attrs_cmd_t *p_get_elem_cmd,
+        wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_get_element_attr_handler(uint8_t handle,
         wiced_bt_avrc_get_elem_attrs_cmd_t *p_get_elem_cmd,
         wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t xx;
     uint32_t attr;
     wiced_bt_avrc_attr_entry_t att_entry;
@@ -733,7 +783,11 @@ BT_HDR * wiced_bt_avrc_tg_get_element_attr_handler(uint8_t handle,
                 att_entry.attr_id         = wiced_bt_avrc_tg_cb.app_track_attr[attr].attr_id;
                 att_entry.name.p_str      = wiced_bt_avrc_tg_cb.app_track_attr[attr].p_str;
 
+#if BTSTACK_VER >= 0x01020000
+                avrc_status = wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
                 avrc_status = wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
                 if (avrc_status != AVRC_STS_NO_ERROR)
                     break;
             }
@@ -759,7 +813,11 @@ BT_HDR * wiced_bt_avrc_tg_get_element_attr_handler(uint8_t handle,
                     att_entry.attr_id         = wiced_bt_avrc_tg_cb.app_track_attr[attr].attr_id;
                     att_entry.name.p_str      = wiced_bt_avrc_tg_cb.app_track_attr[attr].p_str;
 
+#if BTSTACK_VER >= 0x01020000
+                    avrc_status = wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
                     avrc_status = wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
                     if (avrc_status != AVRC_STS_NO_ERROR)
                         break;
                 }
@@ -789,9 +847,17 @@ BT_HDR * wiced_bt_avrc_tg_get_element_attr_handler(uint8_t handle,
 
 ** Description    Handle list player attribute command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_list_player_attr_handler(uint8_t handle, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_list_player_attr_handler(uint8_t handle, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t xx = 0, i;
     WICED_BTAVRCP_TRACE( "%s\n\r", __FUNCTION__);
     p_response->list_app_attr.num_attr = APP_AVRC_SETTING_SUPPORTED_MAX;
@@ -802,7 +868,11 @@ BT_HDR * wiced_bt_avrc_tg_list_player_attr_handler(uint8_t handle, wiced_bt_avrc
         p_response->list_app_attr.attrs[i] = player_settings[i].attr_id;
     }
 
+#if BTSTACK_VER >= 0x01020000
+    wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
     wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
 
     return p_rsp;
 }
@@ -812,9 +882,17 @@ BT_HDR * wiced_bt_avrc_tg_list_player_attr_handler(uint8_t handle, wiced_bt_avrc
 
 ** Description    Handle list player attribute values command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_list_player_attr_values_handler(uint8_t handle, uint8_t attr_id, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_list_player_attr_values_handler(uint8_t handle, uint8_t attr_id, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t xx = 0, i;
 
     WICED_BTAVRCP_TRACE( "%s\n\r", __FUNCTION__);
@@ -827,7 +905,11 @@ BT_HDR * wiced_bt_avrc_tg_list_player_attr_values_handler(uint8_t handle, uint8_
             p_response->list_app_values.num_val =  player_settings[i].num_val;
             memcpy(p_response->list_app_values.vals,  player_settings[i].vals,  player_settings[i].num_val);
 
+#if BTSTACK_VER >= 0x01020000
+            wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
             wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
         }
     }
 
@@ -839,9 +921,17 @@ BT_HDR * wiced_bt_avrc_tg_list_player_attr_values_handler(uint8_t handle, uint8_
 
 ** Description    Handle get current player attribute values command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_get_cur_player_value_handler(uint8_t handle, wiced_bt_avrc_get_cur_app_value_cmd_t *cur_value, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_get_cur_player_value_handler(uint8_t handle, wiced_bt_avrc_get_cur_app_value_cmd_t *cur_value, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t xx = 0, yy = 0;
     wiced_bt_avrc_tg_player_attr_t *p_attr  = NULL;
 
@@ -864,7 +954,11 @@ BT_HDR * wiced_bt_avrc_tg_get_cur_player_value_handler(uint8_t handle, wiced_bt_
                 setting.attr_id = player_settings[xx].attr_id;
                 setting.attr_val = player_settings[xx].curr_value;
 
+#if BTSTACK_VER >= 0x01020000
+                wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
                 wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
             }
         }
     }
@@ -876,9 +970,17 @@ BT_HDR * wiced_bt_avrc_tg_get_cur_player_value_handler(uint8_t handle, wiced_bt_
 
 ** Description    Handle set player attribute values command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_set_player_value_handler(uint8_t handle, wiced_bt_avrc_set_app_value_cmd_t *set_value, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_set_player_value_handler(uint8_t handle, wiced_bt_avrc_set_app_value_cmd_t *set_value, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t xx = 0, i;
     wiced_bt_rc_event_t avrc_event;
 
@@ -909,7 +1011,11 @@ BT_HDR * wiced_bt_avrc_tg_set_player_value_handler(uint8_t handle, wiced_bt_avrc
                         (wiced_bt_avrc_tg_cb.p_event_cb)(APP_AVRC_EVENT_SHUFFLE_SETTINGS_CHANGED, &avrc_event);
                 }
                 /* send response to peer */
+#if BTSTACK_VER >= 0x01020000
+                wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
                 wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
             }
         }
     }
@@ -924,9 +1030,17 @@ BT_HDR * wiced_bt_avrc_tg_set_player_value_handler(uint8_t handle, wiced_bt_avrc
 
 ** Description    Handle get play status command from peer, get info from MCU application
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_get_play_status_handler(uint8_t handle, uint8_t label, uint8_t opcode)
+#else
 BT_HDR * wiced_bt_avrc_tg_get_play_status_handler(uint8_t handle, uint8_t label, uint8_t opcode)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     wiced_bt_avrc_response_t avrc_rsp;
 
     wiced_bt_avrc_sts_t avrc_status;
@@ -942,7 +1056,11 @@ BT_HDR * wiced_bt_avrc_tg_get_play_status_handler(uint8_t handle, uint8_t label,
     avrc_rsp.rsp.opcode = AVRC_OP_VENDOR;
     avrc_rsp.rsp.pdu    = AVRC_PDU_GET_PLAY_STATUS;
 
+#if BTSTACK_VER >= 0x01020000
+    avrc_status = wiced_avrc_build_metadata_rsp(wiced_bt_avrc_tg_cb.avrc_handle, &avrc_rsp, &p_rsp);
+#else
     avrc_status = wiced_bt_avrc_bld_response(wiced_bt_avrc_tg_cb.avrc_handle, &avrc_rsp, &p_rsp);
+#endif
 
     /* TODO: Ensure that the response was built correctly! */
     if (avrc_status != AVRC_STS_NO_ERROR)
@@ -960,9 +1078,17 @@ BT_HDR * wiced_bt_avrc_tg_get_play_status_handler(uint8_t handle, uint8_t label,
 
 ** Description    Handle register notification command from peer
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+wiced_bt_avrc_xmit_buf_t * wiced_bt_avrc_tg_register_notifications_handler(uint8_t handle, wiced_bt_avrc_reg_notif_cmd_t *p_cmd, wiced_bt_avrc_response_t * p_response)
+#else
 BT_HDR * wiced_bt_avrc_tg_register_notifications_handler(uint8_t handle, wiced_bt_avrc_reg_notif_cmd_t *p_cmd, wiced_bt_avrc_response_t * p_response)
+#endif
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
 
     WICED_BTAVRCP_TRACE( "%s event: %d\n\r", __FUNCTION__, p_cmd->event_id);
 
@@ -1077,13 +1203,21 @@ BT_HDR * wiced_bt_avrc_tg_register_notifications_handler(uint8_t handle, wiced_b
      defined(APP_AVRC_BATTERY_STATUS_SUPPORTED)        || \
      defined(APP_AVRC_SYSTEM_STATUS_SUPPORTED))
 
+#if BTSTACK_VER >= 0x01020000
+        wiced_avrc_build_metadata_rsp(handle, p_response, &p_rsp);
+#else
         wiced_bt_avrc_bld_response(handle, p_response, &p_rsp);
+#endif
 #endif
 
     return p_rsp;
 }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uint8_t pdu_id, wiced_bt_avrc_xmit_buf_t * p_rsp, wiced_bt_avrc_response_t * p_avrc_rsp)
+#else
 void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uint8_t pdu_id, BT_HDR * p_rsp, wiced_bt_avrc_response_t * p_avrc_rsp)
+#endif
 {
     uint8_t status = AVRC_STS_NOT_FOUND;
 
@@ -1096,7 +1230,11 @@ void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uin
         if(p_rsp == NULL)
         {
             ctype = AVRC_RSP_NOT_IMPL;
+#if BTSTACK_VER >= 0x01020000
+            status = wiced_avrc_build_metadata_rsp(handle, p_avrc_rsp, &p_rsp);
+#else
             status = wiced_bt_avrc_bld_response(handle, p_avrc_rsp, &p_rsp);
+#endif
         }
 
         if(p_rsp)
@@ -1112,10 +1250,15 @@ void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uin
                 __FUNCTION__, handle, pdu_id);
             }
 
+#if BTSTACK_VER >= 0x01020000
+            wiced_avrc_send_or_enqueue(
+                    wiced_bt_avrc_tg_cb.avrc_handle, label, ctype, p_rsp);
+#else
             if (wiced_bt_avrc_msg_req (wiced_bt_avrc_tg_cb.avrc_handle, label, ctype, p_rsp) != AVRC_SUCCESS)
             {
                 WICED_BTAVRCP_TRACE( "failed to send response\n\r");
             }
+#endif
         }
     }
     UNUSED_VARIABLE(status);
@@ -1128,7 +1271,11 @@ void wiced_bt_avrc_tg_send_rsp(uint8_t handle, uint8_t label, uint8_t ctype, uin
 *******************************************************************************/
 void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uint8_t opcode, wiced_bt_avrc_msg_vendor_t *p_msg )
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t *p_in = p_msg->p_vendor_data;
     uint8_t status = AVRC_STS_NOT_FOUND;
     uint8_t pdu_id = 0;
@@ -1163,7 +1310,11 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
         ctype = AVRC_RSP_REJ;
         avrc_rsp.rsp.status = avrc_sts;
 
+#if BTSTACK_VER >= 0x01020000
+        wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, &p_rsp);
+#else
         wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+#endif
     }
     else
     switch(pdu_id)
@@ -1264,7 +1415,11 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
         {
             avrc_rsp.rsp.status = AVRC_STS_BAD_PARAM;
             ctype = AVRC_RSP_REJ;
+#if BTSTACK_VER >= 0x01020000
+            wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, &p_rsp);
+#else
             wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+#endif
         }
 
         break;
@@ -1277,7 +1432,11 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
             ctype = AVRC_RSP_ACCEPT;
             avrc_rsp.rsp.status = AVRC_STS_NO_ERROR;
         }
+#if BTSTACK_VER >= 0x01020000
+        wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, &p_rsp);
+#else
         wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+#endif
         break;
     case AVRC_PDU_SET_ABSOLUTE_VOLUME:
     {
@@ -1287,7 +1446,11 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
         * Update the volume as received. <TBD>
         */
         wiced_bt_avrc_tg_update_abs_volume(command.volume.volume);
+#if BTSTACK_VER >= 0x01020000
+        wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, &p_rsp);
+#else
         wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+#endif
     }break;
     default:
         ctype = AVRC_RSP_NOT_IMPL;
@@ -1304,7 +1467,11 @@ void wiced_bt_avrc_tg_vendor_command_handler( uint8_t handle, uint8_t label, uin
     wiced_bt_free_buffer(temp_buff);
 }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_set_browsed_player(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_set_browsed_player(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
     {
     if(p_command->addr_player.player_id){
 
@@ -1342,10 +1509,17 @@ wiced_bt_avrc_item_t tg_players[] = {
     }
 };
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_get_folder_items(uint8_t handle,
+        uint8_t label,
+        wiced_bt_avrc_command_t * p_command,
+        wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_get_folder_items(uint8_t handle,
         uint8_t label,
         wiced_bt_avrc_command_t * p_command,
         BT_HDR **pp_rsp )
+#endif
     {
     wiced_bt_avrc_response_t avrc_rsp;
     uint8_t status = AVRC_STS_NOT_FOUND;
@@ -1366,18 +1540,30 @@ void wiced_bt_avrc_tg_handle_get_folder_items(uint8_t handle,
         avrc_rsp.get_items.p_item_list = NULL;
             }
 
+#if BTSTACK_VER >= 0x01020000
+    status = wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, pp_rsp);
+#else
     status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, pp_rsp);
+#endif
     UNUSED_VARIABLE(status);
     return;
 }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_change_path(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_change_path(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
         {
     //p_command->chg_path;
 
         }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_get_item_attributes(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_get_item_attributes(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
         {
     wiced_bt_avrc_response_t avrc_rsp;
     wiced_bt_avrc_get_attrs_rsp_t *p_attrs = &avrc_rsp.get_attrs;
@@ -1389,7 +1575,11 @@ void wiced_bt_avrc_tg_handle_get_item_attributes(uint8_t handle, uint8_t label, 
 
         }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
         {
     wiced_bt_avrc_response_t avrc_rsp;
     wiced_bt_avrc_get_num_of_items_rsp_t *p_rsp_data = &avrc_rsp.get_num_of_items;
@@ -1407,18 +1597,30 @@ void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t labe
     p_rsp_data->num_items = sizeof(tg_players) / sizeof(tg_players[0]);
     p_rsp_data->uid_counter = wiced_bt_avrc_tg_get_uid_counter(p_command->get_num_of_items.scope);
 
+#if BTSTACK_VER >= 0x01020000
+    status = wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, pp_rsp);
+#else
     status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, pp_rsp);
+#endif
     UNUSED_VARIABLE(status);
     return;
             }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_search(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_search(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
             {
     //p_command->search;
 
             }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_avrc_tg_handle_general_reject(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
+#else
 void wiced_bt_avrc_tg_handle_general_reject(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, BT_HDR **pp_rsp )
+#endif
             {
 
 }
@@ -1431,7 +1633,11 @@ void wiced_bt_avrc_tg_handle_general_reject(uint8_t handle, uint8_t label, wiced
 *******************************************************************************/
 void wiced_bt_avrc_tg_browse_command_handler( uint8_t handle, uint8_t label, uint8_t opcode, wiced_bt_avrc_msg_browse_t *p_msg )
 {
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t *p_in = p_msg->p_browse_data;
     uint8_t status = AVRC_STS_NOT_FOUND;
     uint8_t pdu_id = 0;
@@ -1455,22 +1661,26 @@ void wiced_bt_avrc_tg_browse_command_handler( uint8_t handle, uint8_t label, uin
     avrc_sts = wiced_bt_avrc_parse_command((wiced_bt_avrc_msg_t *)p_msg, &command,  temp_buff, APP_AVRC_TEMP_BUF);
 
     if(temp_buff == NULL)
-            {
+    {
         WICED_BTAVRCP_TRACE("error wiced_bt_get_buffer returns NULL\n");
-            }
+    }
 
     if(AVRC_STS_NO_ERROR != avrc_sts)
-            {
+    {
             WICED_BTAVRCP_TRACE("wiced_bt_avrc_parse_command error return %d\n", avrc_sts);
 
             ctype = AVRC_RSP_REJ;
             avrc_rsp.rsp.status = avrc_sts;
 
+#if BTSTACK_VER >= 0x01020000
+            wiced_avrc_build_metadata_rsp(handle, &avrc_rsp, &p_rsp);
+#else
             wiced_bt_avrc_bld_response(handle, &avrc_rsp, &p_rsp);
+#endif
             WICED_BTAVRCP_TRACE("wiced_bt_avrc_parse_command sts:%d %d\n", avrc_rsp.rsp.status);
 
-        }
-        else
+    }
+    else
         switch(pdu_id)
         {
         case AVRC_PDU_SET_BROWSED_PLAYER:
@@ -1511,7 +1721,11 @@ void wiced_bt_avrc_tg_browse_command_handler( uint8_t handle, uint8_t label, uin
 void wiced_bt_avrc_tg_complete_notification(uint8_t event_id)
 {
     wiced_bt_avrc_response_t avrc_rsp;
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_avrc_xmit_buf_t *p_rsp = NULL;
+#else
     BT_HDR *p_rsp = NULL;
+#endif
     uint8_t ctype = AVRC_RSP_CHANGED;
 
     wiced_bt_avrc_command_t command;
@@ -1530,7 +1744,12 @@ void wiced_bt_avrc_tg_complete_notification(uint8_t event_id)
         p_rsp = wiced_bt_avrc_tg_register_notifications_handler(wiced_bt_avrc_tg_cb.avrc_handle, &command.reg_notif, &avrc_rsp);
         if(p_rsp)
         {
+#if BTSTACK_VER >= 0x01020000
+            wiced_avrc_send_or_enqueue (wiced_bt_avrc_tg_cb.avrc_handle, wiced_bt_avrc_tg_cb.registered_event_label[event_id], ctype, p_rsp);
+
+#else
             wiced_bt_avrc_msg_req (wiced_bt_avrc_tg_cb.avrc_handle, wiced_bt_avrc_tg_cb.registered_event_label[event_id], ctype, p_rsp);
+#endif
 
             /* clear the registered event bit once we've completed the action */
             wiced_bt_avrc_tg_cb.registered_event_mask &= ~(1 << (event_id - 1));
@@ -1840,14 +2059,30 @@ wiced_result_t wiced_bt_avrc_tg_open(wiced_bt_device_address_t peer_addr)
     /* Register with AVRC as acceptor (Here, target is acceptor) */
     if ( wiced_bt_avrc_tg_cb.features & feature_flag )
     {
+#if BTSTACK_VER >= 0x01020000
+        avrc_conn_cb.connection_role        = role;
+#else
         avrc_conn_cb.conn         = role;
+#endif
         avrc_conn_cb.control      = ( ( wiced_bt_avrc_tg_cb.features & AV_FEAT_CONTROL ) ? AVRC_CT_CONTROL : 0 );
         avrc_conn_cb.control     |= ( ( wiced_bt_avrc_tg_cb.features & AV_FEAT_TARGET ) ? AVRC_CT_TARGET : 0 );
         avrc_conn_cb.p_ctrl_cback = ( wiced_bt_avrc_ctrl_cback_t * ) wiced_bt_avrc_tg_ctrl_cback;
         avrc_conn_cb.p_msg_cback  = ( wiced_bt_avrc_msg_cback_t * ) wiced_bt_avrc_tg_msg_cback;
+#if BTSTACK_VER >= 0x01020000
+        avrc_conn_cb.p_xmitted_cback = wiced_bt_avrc_xmitted_cback;
+        if (wiced_bt_avrc_tg_cb.p_avct_buf == NULL)
+            wiced_bt_avrc_tg_cb.p_avct_buf = wiced_bt_get_buffer(AVRC_MAX_AVCT_RCV_PKT_SIZE);
+        avrc_conn_cb.p_avct_buff = wiced_bt_avrc_tg_cb.p_avct_buf;
+        avrc_conn_cb.avct_seg_buf_len = AVRC_MAX_AVCT_RCV_PKT_SIZE;
+
+        if (wiced_bt_avrc_tg_cb.p_avrc_buf == NULL)
+            wiced_bt_avrc_tg_cb.p_avrc_buf = wiced_bt_get_buffer(AVRC_MAX_METADATA_RCV_MSG_SIZE);
+        avrc_conn_cb.p_avrc_buff = wiced_bt_avrc_tg_cb.p_avrc_buf;
+        avrc_conn_cb.avrc_seg_buf_len = AVRC_MAX_METADATA_RCV_MSG_SIZE;
+#endif
 
         WICED_BTAVRCP_TRACE("conn (ACP = 1/Init = 0) =%d, role(target=1 / controller=2) =%d\n\r",
-                       avrc_conn_cb.conn, avrc_conn_cb.control);
+                       role, avrc_conn_cb.control);
 
         if ( ( avrc_status = wiced_bt_avrc_open( &wiced_bt_avrc_tg_cb.avrc_handle, &avrc_conn_cb, peer_addr ) ) == AVRC_SUCCESS )
         {
@@ -1914,7 +2149,9 @@ void wiced_bt_avrc_tg_initiate_close( void )
 *******************************************************************************/
 wiced_result_t wiced_bt_avrc_tg_absolute_volume_changed(uint16_t handle,   uint8_t  volume )
 {
+#ifndef BTSTACK_VER
     BT_HDR *p_pkt = NULL;
+#endif
     wiced_bt_avrc_command_t cmd;
 
     wiced_result_t status = WICED_SUCCESS;
@@ -1945,6 +2182,14 @@ wiced_result_t wiced_bt_avrc_tg_absolute_volume_changed(uint16_t handle,   uint8
         cmd.volume.opcode   = AVRC_OP_VENDOR;                /**< Op Code.  Should be AVRC_OP_VENDOR */
         cmd.volume.volume   = volume;                        /**< Absolute Volume */
 
+#if BTSTACK_VER >= 0x01020000
+        uint8_t label = 3; /* TODO: Need to do transaction label accounting. */
+        if (wiced_avrc_build_and_send_metadata_cmd(&cmd, AVRC_CMD_CTRL, wiced_bt_avrc_tg_cb.avrc_handle, label) != AVRC_STS_NO_ERROR)
+        {
+            status = WICED_ERROR;
+            /* TODO: Message not sent. Need to release the label */
+        }
+#else
         if ( AVRC_STS_NO_ERROR == wiced_bt_avrc_bld_command( &cmd, &p_pkt ) )
         {
             uint8_t label = 3; /* TODO: Need to do transaction label accounting. */
@@ -1954,6 +2199,7 @@ wiced_result_t wiced_bt_avrc_tg_absolute_volume_changed(uint16_t handle,   uint8
                 /* TODO: Message not sent. Need to release the label */
             }
         }
+#endif
     }
 
     return status;

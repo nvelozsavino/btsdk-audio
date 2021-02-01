@@ -1,10 +1,10 @@
 /**
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -39,6 +39,7 @@
 #include "wiced_bt_trace.h"
 #include "wiced_button_manager.h"
 #include "platform_button.h"
+#include "clock_timer.h"
 
 /******************************************************
  *                      Macros
@@ -74,7 +75,6 @@ static wiced_bool_t button_check_event_mask ( button_manager_button_t* button, u
 static void button_check_for_double_click( button_manager_button_t* button,  button_manager_event_t* new_event );
 static button_manager_event_t button_deduce_duration_event( button_manager_button_t *button, uint32_t current_interval );
 static button_manager_button_t* get_button( platform_button_t id );
-extern uint64_t clock_SystemTimeMicroseconds64( void );
 
 /******************************************************
  *               Variables Definitions
@@ -96,6 +96,29 @@ static void button_long_press_detect_timeout_handler(TIMER_PARAM_TYPE arg)
 {
     button_manager_button_t *p_button = (button_manager_button_t *) arg;
 
+    /* Check if button is under debouncing state. */
+    if (p_button->debouncing)
+    {
+        return;
+    }
+
+    /* Get current button state. */
+    p_button->current_state = (button_manager_button_state_t) platform_button_get_value(p_button->configuration->button);
+
+    if (p_button->current_state != BUTTON_STATE_HELD)
+    {
+        WICED_BT_TRACE("Err: Button %d is already released\n", p_button->configuration->button);
+
+        if (wiced_is_timer_in_use(&p_button->long_press_timer))
+        {
+            if (WICED_SUCCESS != wiced_stop_timer(&p_button->long_press_timer))
+            {
+                WICED_BT_TRACE("Fail to stop long press timer\n");
+            }
+        }
+
+        return;
+    }
     /* Get current timestatmp. */
     p_button->timer_timestamp = clock_SystemTimeMicroseconds64();
 
@@ -121,6 +144,16 @@ static void button_debounce_timeout_handler(TIMER_PARAM_TYPE arg)
 
         button_pressed_event_handler((void *) p_button);
     }
+    else
+        {
+            if (wiced_is_timer_in_use(&p_button->long_press_timer))
+            {
+                if (WICED_SUCCESS != wiced_stop_timer(&p_button->long_press_timer))
+                {
+                    WICED_BT_TRACE("Fail to stop long press timer\n");
+                }
+            }
+        }
 
     /* Reset the button debounce state. */
     p_button->debouncing = WICED_FALSE;

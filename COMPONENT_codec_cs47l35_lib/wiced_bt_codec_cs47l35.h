@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -43,12 +43,12 @@
 #include "wiced_transport.h"
 #include "wiced_bt_sdp.h"
 #include "wiced_hal_nvram.h"
-#if defined(CYW20706A2) || defined(CYW43012C0)
+#if defined(CYW20706A2)
 #include "wiced_hal_platform.h"
 #else
 #include "wiced_platform.h"
 #endif
-#ifndef CYW43012C0
+#if !(defined(CYW43012C0) || BTSTACK_VER >= 0x01020000)
 #include "wiced_hal_mia.h"
 #endif
 #include "wiced_bt_a2dp_sink.h"
@@ -84,6 +84,15 @@ typedef enum
 #define CS47L35_HEADPHONE_VOLUME_GAIN_MUTE      0
 #define CS47L35_MIC_GAIN_MAX_DB                 31
 #define CS47L35_MIC_GAIN_MIN_DB                 0
+
+#ifdef CYW43012C0
+#define CS47L35_TRACE(format, ...) \
+        if (wiced_debug_uart != WICED_ROUTE_DEBUG_TO_WICED_UART) \
+            WICED_BT_TRACE(format, ##__VA_ARGS__)
+#else
+#define CS47L35_TRACE(format, ...) \
+        WICED_BT_TRACE(format, ##__VA_ARGS__)
+#endif
 
 extern uint32_t a2dp_start_stream_codec_config_len;
 extern codec_reg a2dp_start_stream_codec_config[];

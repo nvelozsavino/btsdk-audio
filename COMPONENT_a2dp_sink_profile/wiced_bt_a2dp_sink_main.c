@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -516,7 +516,11 @@ static void wiced_bt_a2dp_sink_reg_a2dp(wiced_bt_avdt_cs_t *p_cs, wiced_bt_a2dp_
 
     p_cs->cfg.psc_mask  = AVDT_PSC_TRANS;
     p_cs->media_type    = AVDT_MEDIA_AUDIO;
+#if BTSTACK_VER >= 0x01020000
+    p_cs->p_avdt_ctrl_cback  = wiced_bt_a2dp_sink_ctrl_cback;
+#else
     p_cs->p_ctrl_cback  = wiced_bt_a2dp_sink_ctrl_cback;
+#endif
 
     if (wiced_bt_a2dp_sink_cb.p_config_data->feature_mask & WICED_BT_A2DP_SINK_FEAT_DELAY_RPT)
     {

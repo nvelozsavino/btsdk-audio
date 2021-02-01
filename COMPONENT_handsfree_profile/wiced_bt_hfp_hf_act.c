@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -86,6 +86,10 @@ void wiced_bt_hfp_hf_rfcomm_mgmt_cback(wiced_bt_rfcomm_result_t code, uint16_t h
 
             p_scb->rfcomm_handle = handle;
             p_scb->is_server = TRUE;
+
+#if BTSTACK_VER >= 0x01020000
+            wiced_bt_rfcomm_set_rx_fifo (handle, (char *)p_scb->rfcomm_fifo, sizeof (p_scb->rfcomm_fifo));
+#endif
         }
 
         utl_bdcpy(p_scb->peer_addr, bd_addr);
@@ -106,10 +110,55 @@ void wiced_bt_hfp_hf_rfcomm_mgmt_cback(wiced_bt_rfcomm_result_t code, uint16_t h
     wiced_bt_hfp_hf_hdl_event(&msg);
 }
 
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_hfp_hf_rfcomm_port_tx_cmpl_cback(uint16_t handle, void* p_data)
+{
+    WICED_BTHFP_TRACE("wiced_bt_hfp_hf_rfcomm_port_tx_cmpl_cback()  p_data:%x ", p_data);
+
+
+}
+#endif
+
 /*******************************************************************************
 ** Function         wiced_bt_hfp_hf_rfcomm_data_cback
 ** Description      Handle RFCOMM data callback
 *******************************************************************************/
+#if BTSTACK_VER >= 0x01020000
+void wiced_bt_hfp_hf_rfcomm_data_cback(wiced_bt_rfcomm_port_event_t code, uint16_t handle)
+{
+    wiced_bt_hfp_hf_scb_t    *p_scb = NULL;
+    wiced_bt_hfp_rfc_data_t   rfc_data;
+    static char buff[256];
+    uint16_t    len_read;
+
+    p_scb = wiced_bt_hfp_hf_get_scb_by_handle(handle);
+    if(p_scb == NULL)
+    {
+        WICED_BTHFP_ERROR("%s: No SCB found for handle:%d\n", __FUNCTION__, handle);
+        return;
+    }
+
+    if (code & PORT_EV_RXCHAR)
+    {
+        wiced_bt_rfcomm_read_data (handle, buff, 256, &len_read);
+
+        if (len_read != 0)
+        {
+            rfc_data.hdr.event = WICED_BT_HFP_HF_RFC_DATA_EVT;
+            rfc_data.hdr.layer_specific = handle;
+            rfc_data.p_data = buff;
+            rfc_data.len = len_read;
+
+            WICED_BTHFP_TRACE("[%s] rfcomm data callback\n", __func__);
+            wiced_bt_hfp_hf_hdl_event((BT_HDR*)&rfc_data);
+        }
+    }
+    else
+    {
+        WICED_BTHFP_ERROR("%s: Handle: %x  Code: 0x%08x\n", __FUNCTION__, handle, code);
+    }
+}
+#else /* !BTSTACK_VER */
 int wiced_bt_hfp_hf_rfcomm_data_cback(uint16_t handle, void *p_data, uint16_t len)
 {
     wiced_bt_hfp_hf_scb_t    *p_scb = NULL;
@@ -130,6 +179,7 @@ int wiced_bt_hfp_hf_rfcomm_data_cback(uint16_t handle, void *p_data, uint16_t le
     wiced_bt_hfp_hf_hdl_event((BT_HDR*)&rfc_data);
     return 0;
 }
+#endif /* BTSTACK_VER */
 
 /******************************************************************************
  ** Function        wiced_bt_do_sdp_again
@@ -360,8 +410,14 @@ void wiced_bt_hfp_hf_rfc_connect_req(wiced_bt_hfp_hf_scb_t *p_scb,
         goto connect_req_fail;
     }
 
+#if BTSTACK_VER >= 0x01020000
+    res = wiced_bt_rfcomm_set_event_callback(handle,
+        wiced_bt_hfp_hf_rfcomm_data_cback, wiced_bt_hfp_hf_rfcomm_port_tx_cmpl_cback);
+
+#else
     res = wiced_bt_rfcomm_set_data_callback(handle,
         wiced_bt_hfp_hf_rfcomm_data_cback);
+#endif
     if(res != WICED_BT_RFCOMM_SUCCESS)
     {
         wiced_bt_rfcomm_remove_connection(handle, TRUE);
@@ -376,6 +432,16 @@ void wiced_bt_hfp_hf_rfc_connect_req(wiced_bt_hfp_hf_scb_t *p_scb,
         WICED_BTHFP_ERROR("%s: Failed to set RFCOMM mask\n", __FUNCTION__);
         goto connect_req_fail;
     }
+
+#if BTSTACK_VER >= 0x01020000
+    res = wiced_bt_rfcomm_set_rx_fifo (handle, (char *)p_scb->rfcomm_fifo,  sizeof (p_scb->rfcomm_fifo));
+    if (res != WICED_BT_RFCOMM_SUCCESS)
+    {
+        wiced_bt_rfcomm_remove_connection(handle, TRUE);
+        WICED_BTHFP_ERROR("%s: Failed to set RFCOMM FIFO\n", __FUNCTION__);
+        goto connect_req_fail;
+    }
+#endif
 
     /* Set the handle in SCB */
     p_scb->rfcomm_handle  = handle;

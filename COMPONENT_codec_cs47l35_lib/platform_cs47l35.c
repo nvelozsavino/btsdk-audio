@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -31,10 +31,11 @@
  * so agrees to indemnify Cypress against all liability.
  */
 #include <stdint.h>
-#include "data_types.h"
 #include "wiced_rtos.h"
+#ifndef CYW55572A0
 #include <hal/wiced_hal_pcm.h>
 #include <hal/wiced_hal_pspi.h>
+#endif
 #include "wiced_bt_trace.h"
 #include "wiced_audio_manager.h"
 #include "platform_audio_device.h"
@@ -167,7 +168,7 @@ wiced_result_t platform_cs47l35_start_capture_streaming( void* device_data )
 wiced_result_t platform_cs47l35_stop_streaming( void* device_data )
 {
     //stop DAC
-    WICED_BT_TRACE("platform_cs47l35_stop_streaming\n");
+    CS47L35_TRACE("platform_cs47l35_stop_streaming\n");
     driver_codec_mute_disable_all_output();
     return WICED_SUCCESS;
 }
@@ -175,7 +176,7 @@ wiced_result_t platform_cs47l35_stop_streaming( void* device_data )
 wiced_result_t platform_cs47l35_stop_play_rec_streaming( void* device_data )
 {
     //Stop ADC/DAC and mute output.
-    WICED_BT_TRACE("platform_cs47l35_stop_play_rec_streaming\n");
+    CS47L35_TRACE("platform_cs47l35_stop_play_rec_streaming\n");
     driver_codec_mute_disable_all_output();
     return WICED_SUCCESS;
 }
@@ -183,7 +184,7 @@ wiced_result_t platform_cs47l35_stop_play_rec_streaming( void* device_data )
 wiced_result_t platform_cs47l35_stop_capture_streaming( void* device_data )
 {
     //Stop ADC/DAC and mute output.
-    WICED_BT_TRACE("platform_cs47l35_stop_capture_streaming\n");
+    CS47L35_TRACE("platform_cs47l35_stop_capture_streaming\n");
     driver_codec_mute_disable_all_output();
     return WICED_SUCCESS;
 }
@@ -214,7 +215,7 @@ wiced_result_t platform_cs47l35_set_mic_gain( void* device_data, int32_t volume_
 {
     int32_t mic_gain_db;
 
-    WICED_BT_TRACE("platform_cs47l35_set_mic_gain:%d\n", volume_level);
+    CS47L35_TRACE("platform_cs47l35_set_mic_gain:%d\n", volume_level);
 
     if (volume_level > AM_VOL_LEVEL_HIGH)
     {

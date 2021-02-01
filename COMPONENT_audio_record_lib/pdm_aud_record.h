@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -30,16 +30,42 @@
  * of such system or application assumes all risk of such use and in doing
  * so agrees to indemnify Cypress against all liability.
  */
-/** @file
-*
-* Google Fast Pair header file
-*
-* This file provides definitions and function prototypes for security functions (AES, SHA256, ECC)
-*
-*/
-#pragma once
+#include "wiced.h"
+#include "wiced_bt_audio_record.h"
 
-void fastpair_sec_sha256(uint8_t *in, uint16_t in_len, uint8_t *out);
-void fastpair_sec_aes_ecb_128_encrypt(uint8_t *p_dout, uint8_t *p_din, uint8_t *p_key);
-void fastpair_sec_aes_ecb_128_decrypt(uint8_t *p_dout, uint8_t *p_din, uint8_t *p_key);
-int fastpair_sec_uecc_shared_secret(uint8_t *peer_pub_key, uint8_t *priv_key, uint8_t *secret);
+typedef enum
+{
+    PDM_AUDIO_RECORD_EVENT_RX_PCM = 0,
+} pdm_audio_record_event_t;
+
+
+#define PDM_AUDIO_RECORD_FIFO_STATUS_OVERLAP   0x01
+#define PDM_AUDIO_RECORD_FIFO_STATUS_FULL      0x02
+typedef uint8_t pdm_audio_record_fifo_status_t;
+
+
+typedef struct
+{
+    uint8_t channel;                         /**< Microphone channel (0 or 1) */
+    uint8_t *p_data;                         /**< Pointer on PCM samples */
+    uint32_t length;                         /**< Number of bytes in the p_data buffer */
+    pdm_audio_record_fifo_status_t status; /**< Status */
+} pdm_audio_record_rx_pcm_t;
+
+
+typedef union
+{
+    pdm_audio_record_rx_pcm_t rx_pcm;
+} pdm_audio_record_event_data_t;
+
+
+typedef void (pdm_audio_record_callback_t)(pdm_audio_record_event_t event,
+        pdm_audio_record_event_data_t *p_data);
+
+
+wiced_bool_t pdm_aud_record_init(wiced_bt_audio_record_callback_t *p_callback);
+
+wiced_result_t pdm_aud_record_enablePdmAudioRecord(uint8_t enable, uint32_t *p_sample_rate, uint8_t dB);
+
+wiced_result_t pdm_aud_record_select_pads(uint32_t data_pin, uint32_t clock_pin);
+#define wiced_bt_audio_record_select_pdm_pads(data_pin,clk_pin) pdm_aud_record_select_pads(data_pin,clk_pin)

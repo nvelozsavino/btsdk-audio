@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -615,11 +615,10 @@ void bt_hs_spk_app_service_action_run(app_service_action_t action)
 
 uint16_t bt_hs_spk_button_get_remain_bt_service_timer(void)
 {
-    OSAPI_TIMER *timer = (OSAPI_TIMER *)&bt_service_timer;
-    uint32_t r = clock_SystemTimeMicroseconds64();
+    uint64_t r = clock_SystemTimeMicroseconds64();
 
-    if (r < timer->target_time)
-        r = timer->target_time - r;
+    if (r < wiced_timer_target_time_get(&bt_service_timer))
+        r = wiced_timer_target_time_get(&bt_service_timer) - r;
     else
         r=0;
 

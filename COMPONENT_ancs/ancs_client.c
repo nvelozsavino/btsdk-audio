@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -226,7 +226,11 @@ typedef struct t_ANCS_CLIENT
     uint16_t  data_source_val_hdl;
     uint16_t  data_source_cccd_hdl;
 
+#if BTSTACK_VER >= 0x01020000
+    wiced_bt_pool_t *p_event_pool;
+#else
     uint8_t *p_event_pool;
+#endif
     ancs_client_event_t *p_first_event;
 
     uint16_t  data_left_to_read;
@@ -305,8 +309,15 @@ wiced_bool_t wiced_bt_ancs_client_initialize(wiced_bt_ancs_client_config_t *p_co
     }
 
     /* Creating a buffer pool for holding the peer devices's key info */
+#if BTSTACK_VER >= 0x01020000
+    ancs_client.p_event_pool = wiced_bt_create_pool("ancs_evt",
+            sizeof(ancs_client_queued_event_t),
+            ANCS_MAX_QUEUED_NOTIFICATIONS,
+            NULL);
+#else
     ancs_client.p_event_pool = (uint8_t *) wiced_bt_create_pool(sizeof(ancs_client_queued_event_t),
                                                                 ANCS_MAX_QUEUED_NOTIFICATIONS);
+#endif
 
     if (ancs_client.p_event_pool == NULL)
     {

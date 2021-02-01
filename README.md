@@ -32,10 +32,6 @@ This repo contains audio libraries used in BTSDK 2.0 or higher. The libraries in
     * Apple Notification Center Service<br/>
 
 
-* gfps_provider<br/>
-    * Google Fast Pair<br/>
-
-
 * audio\_insert\_lib<br/>
     * Audio Insert Funtionality<br/>
 

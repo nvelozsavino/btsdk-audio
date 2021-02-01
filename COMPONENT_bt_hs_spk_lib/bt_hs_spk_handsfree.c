@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -85,6 +85,10 @@ typedef struct
 
     /* Current sampling rate used for Audio Manager. */
     int32_t sampling_rate;
+
+    /* Use for MIC data if path is WICED_BT_SCO_OVER_APP_CB */
+    /* Max is 120 samples, each sample is 16 bits */
+    uint8_t mic_data[240];
 } bt_hs_spk_handsfree_cb_t;
 
 static void handsfree_event_callback( wiced_bt_hfp_hf_event_t event, wiced_bt_hfp_hf_event_data_t* p_data);
@@ -177,7 +181,7 @@ static void bt_hs_spk_handsfree_cb_init_context(void)
  */
 static void bt_hs_spk_handsfree_sco_data_app_callback(uint32_t ltch_len, uint8_t *p_data)
 {
-    uint8_t *p_mic_data = NULL;
+    uint8_t *p_mic_data = bt_hs_spk_handsfree_cb.mic_data;
     uint16_t ret_value;
 
     /* Check if the active call session exists. */
@@ -192,14 +196,6 @@ static void bt_hs_spk_handsfree_sco_data_app_callback(uint32_t ltch_len, uint8_t
     /* Check if the user application has MIC data to be sent to the AG. */
     if (bt_hs_spk_handsfree_cb.p_mic_data_add_cb)
     {
-        /* Allocate memory. */
-        p_mic_data = (uint8_t *) wiced_memory_allocate(ltch_len);
-
-        if (p_mic_data == NULL)
-        {
-            return;
-        }
-
         if ((*bt_hs_spk_handsfree_cb.p_mic_data_add_cb)(p_mic_data, ltch_len))
         {
             ret_value = wiced_bt_sco_output_stream(bt_hs_spk_handsfree_cb.p_active_context->sco_index,
@@ -211,9 +207,6 @@ static void bt_hs_spk_handsfree_sco_data_app_callback(uint32_t ltch_len, uint8_t
                 WICED_BT_TRACE("wiced_bt_sco_output_stream (%d)\n", ret_value);
             }
         }
-
-        /* Free memory. */
-        wiced_memory_free((void *) p_mic_data);
     }
 }
 
@@ -2562,7 +2555,7 @@ static uint8_t bt_hs_spk_handsfree_speaker_volume_level_get(handsfree_app_state_
  */
 static void bt_hs_spk_handsfree_speaker_volume_level_set(handsfree_app_state_t *p_ctx, uint8_t volume_level)
 {
-    if (p_ctx == NULL)
+    if (p_ctx == NULL || bt_hs_spk_handsfree_cb.p_active_context == NULL)
     {
         return;
     }

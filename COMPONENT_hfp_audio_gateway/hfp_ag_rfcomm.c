@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -48,9 +48,68 @@ static void hfp_ag_rfcomm_acceptor_opened( hfp_ag_session_cb_t *p_scb );
 void hfp_ag_rfcomm_do_open( hfp_ag_session_cb_t *p_scb );
 extern void hfp_ag_process_open_callback( hfp_ag_session_cb_t *p_scb, uint8_t status );
 
+#if BTSTACK_VER >= 0x01020000
+/*
+ * RFCOMM TX complete callback
+ */
+void hfp_ag_rfcomm_port_tx_cmpl_cback(uint16_t handle, void *p_data)
+{
+    /* nothing to do */
+}
+#endif /* BTSTACK_VER */
+
 /*
  * Process RFCOMM data received from the peer
  */
+#if BTSTACK_VER >= 0x01020000
+void hfp_ag_rfcomm_data_callback( wiced_bt_rfcomm_port_event_t code, uint16_t handle )
+{
+    hfp_ag_session_cb_t *p_scb = hfp_ag_find_scb_by_rfc_handle( handle, HFP_FLAG_RFCOMM_DATA );
+    char *p;
+    static char buff[256];
+    uint16_t len;
+
+    if ( p_scb == NULL )
+    {
+        WICED_BT_TRACE( "hfp_ag_rfcomm_data_callback: Unknown port handle: 0x%04x\n", handle );
+        return;
+    }
+
+    if (code & PORT_EV_RXCHAR)
+    {
+        wiced_bt_rfcomm_read_data (handle, buff, 256, &len);
+
+        p = buff;
+    }
+    else
+    {
+        WICED_BT_TRACE("[%u]handle_rcvd_data: unexpected code: 0x%08X\n",
+                p_scb->app_handle, code);
+        return;
+    }
+
+    //Ash DumpData( "RECV:", p_data, len );
+
+    if ( p_scb->res_len == 0 )
+    {
+        memset( p_scb->res_buf, 0, HFP_AG_AT_MAX_LEN );
+    }
+
+    if ( ( p_scb->res_len + len ) > HFP_AG_AT_MAX_LEN )
+    {
+        WICED_BT_TRACE( "[%u]handle_rcvd_data: too much data res_len %u  len: %u\n", p_scb->app_handle, p_scb->res_len, len );
+    }
+    else if ( len > 0 )
+    {
+        memcpy( &p_scb->res_buf[p_scb->res_len], p, len );
+        p_scb->res_len += len;
+
+        hfp_ag_parse_AT_command (p_scb);
+    }
+
+    return;
+}
+#else /* !BTSTACK_VER */
 int hfp_ag_rfcomm_data_callback( uint16_t port_handle, void *p_data, uint16_t len )
 {
     char                *p = ( char * )p_data;
@@ -83,6 +142,7 @@ int hfp_ag_rfcomm_data_callback( uint16_t port_handle, void *p_data, uint16_t le
 
     return ( ( int )len );
 }
+#endif /* BTSTACK_VER */
 
 
 /*
@@ -111,10 +171,21 @@ static void hfp_ag_rfcomm_control_callback( uint32_t port_status, uint16_t port_
 
     if ( ( port_status == WICED_BT_RFCOMM_SUCCESS ) && ( p_scb->state != HFP_AG_STATE_CLOSING) )
     {
+#if BTSTACK_VER >= 0x01020000
+        wiced_bt_rfcomm_set_event_callback(port_handle,
+                hfp_ag_rfcomm_data_callback,
+                hfp_ag_rfcomm_port_tx_cmpl_cback);
+#else
         wiced_bt_rfcomm_set_data_callback( port_handle, hfp_ag_rfcomm_data_callback );
+#endif
 
         i = p_scb->state;
         p_scb->state = HFP_AG_STATE_OPEN;
+
+#if BTSTACK_VER >= 0x01020000
+        wiced_bt_rfcomm_set_rx_fifo (port_handle, (char *)p_scb->rfcomm_fifo,
+                sizeof (p_scb->rfcomm_fifo));
+#endif
 
         if ( i == HFP_AG_STATE_IDLE )
             hfp_ag_rfcomm_acceptor_opened( p_scb );

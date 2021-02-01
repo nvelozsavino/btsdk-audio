@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -37,10 +37,16 @@
  */
 
 #include <string.h>
+#ifndef BTSTACK_VER
 #include "wiced_gki.h"
+#endif
 #include "wiced_bt_avdt.h"
 #include "wiced_bt_a2dp_sink_int.h"
 #include "wiced_audio_sink.h"
+#ifdef CYW20721B2
+#include "wiced_transport.h"
+#include "wiced_hal_cpu_clk.h"
+#endif
 
 #if (defined(WICED_BT_A2DP_SINK_USE_LITEHOST) && WICED_BT_A2DP_SINK_USE_LITEHOST == TRUE)
 
@@ -240,6 +246,16 @@ wiced_result_t wiced_bt_a2dp_sink_streaming_start(uint16_t handle)
             sink_cfg[context_index].cp_type,
             &sink_cfg[context_index].codec_config);
 
+#ifdef CYW20721B2
+    if (result == WICED_SUCCESS && wiced_audio_sink_decode_in_clk_96MHz_is_enabled())
+    {
+        wiced_transport_uart_rx_pause();
+        /* Force LDO voltage to high to prevent I/O corruption */
+        wiced_hal_cpu_clk_ldo_voltage_force_high();
+        wiced_transport_uart_rx_resume();
+    }
+#endif
+
     sink_cfg[context_index].is_started = result == WICED_SUCCESS;
 
     return result;
@@ -259,6 +275,15 @@ wiced_result_t wiced_bt_a2dp_sink_streaming_stop( uint16_t handle )
     if ( sink_cfg[context_index].is_started )
     {
         result = wiced_audio_sink_reset( handle );
+#ifdef CYW20721B2
+        if (wiced_audio_sink_decode_in_clk_96MHz_is_enabled())
+        {
+            wiced_transport_uart_rx_pause();
+            /* Release LDO voltage */
+            wiced_hal_cpu_clk_ldo_voltage_release();
+            wiced_transport_uart_rx_resume();
+        }
+#endif
         sink_cfg[context_index].is_started = !( result == WICED_SUCCESS );
     }
     return result;

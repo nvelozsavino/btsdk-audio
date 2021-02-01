@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -197,7 +197,7 @@ static void         bt_hs_spk_control_reconnect_timeout_callback(uint32_t param)
 
 static void         bt_hs_spk_control_ble_conn_param_check_timer_callback(uint32_t param);
 
-extern wiced_result_t   BTM_SetPacketTypes (wiced_bt_device_address_t remote_bda, UINT16 pkt_types);
+extern wiced_result_t   BTM_SetPacketTypes (wiced_bt_device_address_t remote_bda, uint16_t pkt_types);
 
 /******************************************************
  *               Function Definitions
@@ -258,7 +258,11 @@ void bt_hs_spk_control_hci_packet_cback( wiced_bt_hci_trace_type_t type, uint16_
 {
 #if (WICED_HCI_TRANSPORT == WICED_HCI_TRANSPORT_UART)
     // send the trace
+#ifdef NEW_DYNAMIC_MEMORY_INCLUDED
+    wiced_transport_send_hci_trace(type, p_data, length);
+#else
     wiced_transport_send_hci_trace( NULL, type, length, p_data  );
+#endif
 #endif
 }
 
@@ -586,8 +590,15 @@ void bt_hs_spk_control_connection_status_callback (wiced_bt_device_address_t bd_
                 if (bt_hs_spk_audio_streaming_check(NULL) == WICED_ALREADY_CONNECTED)
                 {
                     /* trigger a timer to check for connection parameter if audio is streaming */
-                    wiced_start_timer(&bt_hs_spk_control_cb.ble_conn_param_check_timer,
-                            BLE_CONN_PARAM_CHECK_DURATION_MS);
+                    result = wiced_start_timer(&bt_hs_spk_control_cb.ble_conn_param_check_timer,
+                                               BLE_CONN_PARAM_CHECK_DURATION_MS);
+
+                    if (result != WICED_BT_SUCCESS)
+                    {
+                        WICED_BT_TRACE("Err: fail to start ble conn param check timer (%d)\n", result);
+                    }
+
+                    (void) result;
                 }
             }
         }

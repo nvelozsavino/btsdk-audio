@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -42,7 +42,7 @@
 #include "wiced_bt_app_common.h"
 #endif
 #include "wiced_memory.h"
-#if defined(CYW20719B1) || defined(CYW20721B1) || defined(CYW20721B2) || defined(CYW43012C0) || defined(CYW20706A2)
+#if defined(CYW20719B1) || defined(CYW20721B1) || defined(CYW20721B2) || defined(CYW43012C0) || defined(CYW20706A2) || BTSTACK_VER >= 0x01020000
 #include "wiced_bt_event.h"
 #endif
 #include "wiced_bt_utils.h"
@@ -310,8 +310,13 @@ wiced_result_t wiced_bt_hfp_hf_register(uint8_t scn, uint16_t uuid)
         return res;
     }
 
+#if BTSTACK_VER >= 0x01020000
+    res = wiced_bt_rfcomm_set_event_callback(handle,
+        wiced_bt_hfp_hf_rfcomm_data_cback, wiced_bt_hfp_hf_rfcomm_port_tx_cmpl_cback);
+#else
     res = wiced_bt_rfcomm_set_data_callback(handle,
         wiced_bt_hfp_hf_rfcomm_data_cback);
+#endif
     if(res != WICED_BT_RFCOMM_SUCCESS)
     {
         wiced_bt_rfcomm_remove_connection(handle, TRUE);

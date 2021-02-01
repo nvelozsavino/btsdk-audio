@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -42,6 +42,12 @@
 #include "wiced_bt_dev.h"
 #include "wiced_bt_sdp.h"
 #include "wiced_timer.h"
+
+#if BTSTACK_VER >= 0x01020000
+#ifndef BOOLEAN
+#define BOOLEAN     uint32_t
+#endif
+#endif
 
 /******************************************************
  *                     Constants
@@ -136,6 +142,11 @@ typedef struct
     BOOLEAN             clip_enabled;           /* set to TRUE if HF enables CLIP reporting */
     BOOLEAN             cmer_enabled;           /* set to TRUE if HF enables CMER reporting */
     BOOLEAN             cmee_enabled;           /* set to TRUE if HF enables CME ERROR reporting */
+
+#if BTSTACK_VER >= 0x01020000
+    /* TODO : for now fifo size if fixed, need to update the required max memory for rfcomm_fifo */
+    uint8_t             rfcomm_fifo[400];
+#endif
 
 } hfp_ag_session_cb_t;
 

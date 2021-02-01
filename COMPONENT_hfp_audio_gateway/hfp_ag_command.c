@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -231,7 +231,11 @@ static uint8_t _send_result_to_hf (hfp_ag_session_cb_t *p_scb, UINT8 code, char 
     *p++ = '\n';
 
     /* send to RFCOMM */
+#if BTSTACK_VER >= 0x01020000
+    ret = wiced_bt_rfcomm_write_data( p_scb->rfc_conn_handle, buf, ( uint16_t )( p - buf ) );
+#else
     ret = wiced_bt_rfcomm_write_data( p_scb->rfc_conn_handle, buf, ( uint16_t )( p - buf ), &len );
+#endif
 
     if ( ret != WICED_BT_RFCOMM_SUCCESS)
     {

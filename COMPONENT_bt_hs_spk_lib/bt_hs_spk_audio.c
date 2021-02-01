@@ -1,10 +1,10 @@
 /*
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -62,6 +62,9 @@
 #include "wiced_bt_avrc_tg.h"
 #include <wiced_utilities.h>
 #include "wiced_transport.h"
+#ifdef CYW20721B2
+#include "wiced_audio_sink.h"
+#endif
 
 /**************************************************************************************************
 *  Type Definitions and Enums
@@ -525,6 +528,11 @@ wiced_result_t bt_hs_spk_audio_init(bt_hs_spk_control_config_audio_t *p_config, 
 
 #ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
     wiced_bt_avrc_ct_register_passthrough_event_callback(&bt_hs_spk_audio_avrc_passthrough_cmd_handler);
+#endif
+
+#ifdef CYW20721B2
+    /* enable the mechanism to increae CPU clock to 96 MHz for decoding packet */
+    wiced_audio_sink_decode_in_clk_96MHz_set(WICED_TRUE);
 #endif
 
     return result;
@@ -2471,7 +2479,7 @@ static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk
                                 elem_attrs_rsp->p_attrs[i].attr_id,
                                 elem_attrs_rsp->p_attrs[i].name.str_len);
                 */
-                rsp = (char *) wiced_bt_get_buffer(rsp_size);
+                rsp = (char *) wiced_bt_get_buffer(rsp_size + 1);
                 if (rsp != NULL)
                 {
                     strncpy(&rsp[0], (char*)elem_attrs_rsp->p_attrs[i].name.p_str, elem_attrs_rsp->p_attrs[i].name.str_len);

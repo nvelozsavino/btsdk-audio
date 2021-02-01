@@ -1,10 +1,10 @@
 /**
- * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
- * Cypress Semiconductor Corporation. All Rights Reserved.
+ * Copyright 2016-2021, Cypress Semiconductor Corporation (an Infineon company) or
+ * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
  *
  * This software, including source code, documentation and related
- * materials ("Software"), is owned by Cypress Semiconductor Corporation
- * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * materials ("Software") is owned by Cypress Semiconductor Corporation
+ * or one of its affiliates ("Cypress") and is protected by and subject to
  * worldwide patent protection (United States and foreign),
  * United States copyright laws and international treaty provisions.
  * Therefore, you may use this Software only as provided in the license
@@ -13,7 +13,7 @@
  * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
  * non-transferable license to copy, modify, and compile the Software
  * source code solely for use in connection with Cypress's
- * integrated circuit products. Any reproduction, modification, translation,
+ * integrated circuit products.  Any reproduction, modification, translation,
  * compilation, or representation of this Software except as specified
  * above is prohibited without the express written permission of Cypress.
  *
@@ -41,7 +41,9 @@
 #include "platform_audio_effects.h"
 #include "platform.h"
 #include "wiced_platform.h"
+#ifndef CYW43012C0
 #include "GeneratedSource/cycfg_pins.h"
+#endif
 
 gpio_button_t platform_gpio_buttons[] =
 {
@@ -51,7 +53,7 @@ gpio_button_t platform_gpio_buttons[] =
         .gpio       = WICED_BUTTON1,
         .trigger    = IRQ_TRIGGER_BOTH_EDGES,
     },
-
+#if WICED_PLATFORM_BUTTON_MAX_DEF >= 2
     [PLATFORM_BUTTON_2] =
     {
         .polarity   = WICED_ACTIVE_HIGH,
@@ -72,6 +74,7 @@ gpio_button_t platform_gpio_buttons[] =
         .trigger    = IRQ_TRIGGER_BOTH_EDGES,
     },
 #endif
+#endif /* WICED_PLATFORM_BUTTON_MAX_DEF >= 2 */
 };
 
 #ifdef CS47L35_CODEC_ENABLE
@@ -86,16 +89,20 @@ extern platform_audio_port cs47l35_audio_port;
 /*platform SPI/I2S pin configs for supported codec*/
 platform_audio_port cs47l35_audio_port = {
     .spi_speed = SPI_FREQ_24MHZ,
+#ifndef CYW55572A0
     .spi_pin_clk = SPI_CLK,
     .spi_pin_cs = SPI_CS,
     .spi_pin_mosi = SPI_MOSI,
     .spi_pin_miso = SPI_MISO,
+#endif
     .i2s_mode = I2S_SLAVE,
+#ifndef CYW55572A0
     .i2s_pin_sclk = I2S_CLK,
     .i2s_pin_ws = I2S_WS,
     .i2s_pin_din = I2S_DI,
     .i2s_pin_dout = I2S_DO,
     .pin_reset = WICED_RESET_PIN,
+#endif
 };
 
 /* A2DP Sink (Render) device for platform */
