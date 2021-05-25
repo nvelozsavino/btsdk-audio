@@ -1162,7 +1162,7 @@ void wiced_bt_hfp_hf_at_cback(void *user_data, uint16_t res, char *p_arg)
             WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_EXTENDED_ERROR_RESULT_CODES    %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_EXTENDED_ERROR_RESULT_CODES) ? 1 : 0 );
             WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_CODEC_NEGOTIATION              %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_CODEC_NEGOTIATION) ? 1 : 0 );
             WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_HF_INDICATORS                  %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_HF_INDICATORS) ? 1 : 0 );
-            WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_ESCO_S4_T2_SETTINGS_SUPPORT    %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_ESCO_S4_T2_SETTINGS_SUPPORT) ? 1 : 0 );
+            WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_ESCO_S4_SETTINGS_SUPPORT       %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_ESCO_S4_SETTINGS_SUPPORT) ? 1 : 0 );
             WICED_BTHFP_TRACE("\t WICED_BT_HFP_AG_FEATURE_ENHANCED_VOICE_RECOGNITION     %d \n", (app_data.ag_feature_flags & WICED_BT_HFP_AG_FEATURE_ENHANCED_VOICE_RECOGNITION) ? 1 : 0 );
             break;
 #if (WICED_BT_HFP_HF_VERSION >= WICED_BT_HFP_HF_VERSION_1_7 \

@@ -198,6 +198,7 @@ static void         bt_hs_spk_control_reconnect_timeout_callback(uint32_t param)
 static void         bt_hs_spk_control_ble_conn_param_check_timer_callback(uint32_t param);
 
 extern wiced_result_t   BTM_SetPacketTypes (wiced_bt_device_address_t remote_bda, uint16_t pkt_types);
+extern wiced_bool_t     BTM_UseLeLink(wiced_bt_device_address_t bd_addr);
 
 /******************************************************
  *               Function Definitions
@@ -469,8 +470,13 @@ static wiced_bool_t bt_hs_spk_control_connection_status_update_br_edr(wiced_bt_d
         {   // disconnected -> connected
             /* Maintain ACL Connection information */
             p_target->acl.power_mode            = WICED_POWER_STATE_ACTIVE;
-            p_target->acl.link_policy           = HCI_ENABLE_MASTER_SLAVE_SWITCH | \
+#if BTSTACK_VER > 0x01020000
+            p_target->acl.link_policy           = HCI_ENABLE_ROLE_SWITCH | \
                                                   HCI_ENABLE_SNIFF_MODE;
+#else
+            p_target->acl.link_policy           = HCI_ENABLE_ROLE_SWITCH | \
+                                                  HCI_ENABLE_SNIFF_MODE;
+#endif
             p_target->acl.sniff_interval        = BT_HS_SPK_CONTROL_DEFAULT_SNIFF_INTERVAL;
 
             /* Set supported ACL packet types. */
@@ -499,7 +505,11 @@ static wiced_bool_t bt_hs_spk_control_connection_status_update_br_edr(wiced_bt_d
             p_target->reason                    = reason;
 
             /* Enable role switch and sniff mode. */
-            bt_hs_spk_control_acl_link_policy_set(bd_addr, HCI_ENABLE_MASTER_SLAVE_SWITCH | HCI_ENABLE_SNIFF_MODE);
+#if BTSTACK_VER > 0x01020000
+            bt_hs_spk_control_acl_link_policy_set(bd_addr, HCI_ENABLE_ROLE_SWITCH | HCI_ENABLE_SNIFF_MODE);
+#else
+            bt_hs_spk_control_acl_link_policy_set(bd_addr, HCI_ENABLE_ROLE_SWITCH | HCI_ENABLE_SNIFF_MODE);
+#endif
 
             if (bt_hs_spk_control_reconnect_state_get())
             {
@@ -624,7 +634,13 @@ static void bt_hs_spk_control_link_key_display(void)
 
     for (i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
     {
+#if BTSTACK_VER > 0x01020000
+        WICED_BT_TRACE("%d: %B %B (BT ", i,
+                bt_hs_spk_control_cb.linkey[i].bd_addr,
+                bt_hs_spk_control_cb.linkey[i].conn_addr);
+#else
         WICED_BT_TRACE("%d: %B (BT ", i, bt_hs_spk_control_cb.linkey[i].bd_addr);
+#endif
 
         for (j = 0 ; j < LINK_KEY_LEN ; j++)
         {
@@ -1364,6 +1380,25 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
             continue;
         }
 
+#if BTSTACK_VER > 0x01020000
+        if (!memcmp(bt_hs_spk_control_cb.linkey[i].bd_addr, link_keys_update->bd_addr, sizeof(wiced_bt_device_address_t))
+                || !memcmp(bt_hs_spk_control_cb.linkey[i].conn_addr, link_keys_update->bd_addr, sizeof(wiced_bt_device_address_t)))
+        {
+            /* matched */
+            /* The content of linkkey payload passed from stack for BR/EDR link and BLE link
+             * is correct. No need to do the partial update behavior. */
+            memcpy(&bt_hs_spk_control_cb.linkey[i], link_keys_update,
+                    sizeof(bt_hs_spk_control_cb.linkey[i]));
+
+            /* only put the BR/EDR one to the 1st item used for reconnection behavior */
+            if (BTM_UseLeLink(link_keys_update->bd_addr))
+            {
+                goto BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_WRITE;
+            }
+
+            goto BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_SORT_AND_WRITE;
+        }
+#else /* !BTSTACK_VER > 0x01020000 */
         if (link_keys_update->key_data.ble_addr_type & BLE_ADDR_RANDOM)
         {
             if ( ( ((bt_hs_spk_control_cb.linkey[i].key_data.le_keys_available_mask & BTM_LE_KEY_PID)
@@ -1430,6 +1465,7 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
                                        sizeof(wiced_bt_link_key_t));
             goto BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_SORT_AND_WRITE;
         }
+#endif /* BTSTACK_VER > 0x01020000 */
     }
 
     /* Find a free space for this new link key. */
@@ -1438,6 +1474,11 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
         if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
                                                       sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
         {
+#if BTSTACK_VER > 0x01020000
+            memcpy(&bt_hs_spk_control_cb.linkey[i], link_keys_update,
+                    sizeof(bt_hs_spk_control_cb.linkey[i]));
+
+#else
             memcpy((void *) bt_hs_spk_control_cb.linkey[i].bd_addr,
                                (void *) link_keys_update->bd_addr,
                                sizeof(wiced_bt_device_address_t));
@@ -1445,6 +1486,7 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
             memcpy((void *)&bt_hs_spk_control_cb.linkey[i].key_data,
                    (void *)&link_keys_update->key_data,
                    sizeof(wiced_bt_device_sec_keys_t));
+#endif
 
             goto BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_SORT_AND_WRITE;
         }
@@ -1452,6 +1494,11 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
 
     /* Delete the least recently used value from the list and add the new value to the list. */
     i = BT_HS_SPK_CONTROL_LINK_KEY_COUNT - 1;
+#if BTSTACK_VER > 0x01020000
+    memcpy(&bt_hs_spk_control_cb.linkey[i], link_keys_update,
+            sizeof(bt_hs_spk_control_cb.linkey[i]));
+
+#else
     memcpy((void *) bt_hs_spk_control_cb.linkey[i].bd_addr,
            (void *) link_keys_update->bd_addr,
            sizeof(wiced_bt_device_address_t));
@@ -1459,6 +1506,7 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
     memcpy((void *)&bt_hs_spk_control_cb.linkey[i].key_data,
            (void *)&link_keys_update->key_data,
            sizeof(wiced_bt_device_sec_keys_t));
+#endif
 
 BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_SORT_AND_WRITE:
 
@@ -1527,6 +1575,17 @@ static wiced_bool_t bt_hs_spk_control_link_key_get(wiced_bt_device_link_keys_t *
 
     for (i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
     {
+#if BTSTACK_VER > 0x01020000
+        if (!memcmp(bt_hs_spk_control_cb.linkey[i].bd_addr, link_keys_request->bd_addr, sizeof(wiced_bt_device_address_t))
+                || !memcmp(bt_hs_spk_control_cb.linkey[i].conn_addr, link_keys_request->bd_addr, sizeof(wiced_bt_device_address_t)))
+        {
+            /* matched */
+            memcpy(link_keys_request, &bt_hs_spk_control_cb.linkey[i],
+                    sizeof(*link_keys_request));
+
+            return WICED_TRUE;
+        }
+#else /* !BTSTACK_VER > 0x01020000 */
         if (link_keys_request->key_data.le_keys_available_mask != 0)
         {
             if (     ( (bt_hs_spk_control_cb.linkey[i].key_data.le_keys_available_mask & BTM_LE_KEY_PID)
@@ -1600,6 +1659,7 @@ static wiced_bool_t bt_hs_spk_control_link_key_get(wiced_bt_device_link_keys_t *
 
             return WICED_TRUE;
         }
+#endif /* BTSTACK_VER */
     }
 
     return WICED_FALSE;
@@ -2383,7 +2443,7 @@ void bt_hs_spk_control_acl_link_policy_sniff_mode_set(wiced_bt_device_address_t 
  *
  * @param bdaddr - connection with peer device
  * @param link_policy - HCI_DISABLE_ALL_LM_MODES
- *                      HCI_ENABLE_MASTER_SLAVE_SWITCH
+ *                      HCI_ENABLE_ROLE_SWITCH (HCI_ENABLE_ROLE_SWITCH if BTSTACK_VER > 0x01020000)
  *                      HCI_ENABLE_HOLD_MODE
  *                      HCI_ENABLE_SNIFF_MODE
  *                      HCI_ENABLE_PARK_MODE
@@ -2545,8 +2605,8 @@ static void bt_hs_spk_control_local_volume_change_handler(int32_t am_vol_level, 
  * Set the IUT role with the target connection
  *
  * @param[in]   bdaddr - peer device's address
- * @param[in]   target_role - HCI_ROLE_MASTER
- *                            HCI_ROLE_SLAVE
+ * @param[in]   target_role - HCI_ROLE_CENTRAL
+ *                            HCI_ROLE_PERIPHERAL
  *
  * @return      WICED_BT_BADARG
  *              WICED_BT_ERROR
@@ -2563,11 +2623,19 @@ wiced_result_t bt_hs_spk_control_bt_role_set(wiced_bt_device_address_t bdaddr, u
         return WICED_BT_BADARG;
     }
 
-    if ((target_role != HCI_ROLE_MASTER) &&
-        (target_role != HCI_ROLE_SLAVE))
+#if BTSTACK_VER > 0x01020000
+    if ((target_role != HCI_ROLE_CENTRAL) &&
+        (target_role != HCI_ROLE_PERIPHERAL))
     {
         return WICED_BT_BADARG;
     }
+#else
+    if ((target_role != HCI_ROLE_CENTRAL) &&
+        (target_role != HCI_ROLE_PERIPHERAL))
+    {
+        return WICED_BT_BADARG;
+    }
+#endif
 
     /* Get the Role of the Link */
     status = wiced_bt_dev_get_role(bdaddr, &current_role, BT_TRANSPORT_BR_EDR);

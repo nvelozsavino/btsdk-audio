@@ -51,7 +51,6 @@
 #if !(defined(CYW43012C0) || BTSTACK_VER >= 0x01020000)
 #include "wiced_hal_mia.h"
 #endif
-#include "wiced_bt_a2dp_sink.h"
 #include "wiced_bt_trace.h"
 #include "wiced_bt_audio.h"
 #include "wiced_hal_puart.h"

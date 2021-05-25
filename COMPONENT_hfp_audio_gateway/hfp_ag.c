@@ -215,10 +215,12 @@ void hfp_ag_audio_open( uint16_t handle )
     if ( p_scb->state == HFP_AG_STATE_OPEN )
     {
         /* Assume we are bringing up a SCO for voice recognition, so send BVRA */
-        if(p_scb->hf_profile_uuid == UUID_SERVCLASS_HF_HANDSFREE)
+        if ( (p_scb->hf_profile_uuid == UUID_SERVCLASS_HF_HANDSFREE) &&
+             (ag_features & HFP_AG_FEAT_VREC) && (p_scb->hf_features & HFP_HF_FEAT_VREC) )
+        {
             hfp_ag_send_BVRA_to_hf( p_scb, TRUE );
-
-        hfp_ag_sco_create( p_scb, TRUE );
+            hfp_ag_sco_create( p_scb, TRUE );
+        }
     }
 }
 
@@ -243,6 +245,19 @@ void hfp_ag_audio_close( uint16_t handle )
     }
 }
 
+/*
+ * Sends Given Command string
+ */
+void hfp_ag_send_cmd_str( uint16_t handle , uint8_t *data, uint8_t len)
+{
+	hfp_ag_session_cb_t *p_scb = hfp_ag_find_scb_by_app_handle( handle );
+
+	if (p_scb == NULL)
+        return;
+
+	data[len] = '\0';
+	hfp_ag_send_cmd_str_to_hf(p_scb, (char *)data);
+}
 /*
  * Find SCB associated with AG BD address.
  */
@@ -391,7 +406,10 @@ void hfp_ag_hci_send_ag_event( uint16_t evt, uint16_t handle, hfp_ag_event_t *p_
         *p++ = ( uint8_t ) ( p_data->conn.peer_features );
         *p++ = ( uint8_t ) ( p_data->conn.peer_features >> 8 );
         break;
-
+    case HCI_CONTROL_AG_EVENT_AT_CMD:
+        memcpy(p, p_data->at_cmd.cmd_ptr, p_data->at_cmd.cmd_len);
+        p += p_data->at_cmd.cmd_len;
+        break;
     default:                             /* Rest have no parameters */
         break;
     }

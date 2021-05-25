@@ -49,7 +49,6 @@
 #include "wiced_platform.h"
 #endif
 
-#include "wiced_bt_a2dp_sink.h"
 #include "wiced_bt_trace.h"
 #include "wiced_bt_audio.h"
 #include "wiced_hal_puart.h"
@@ -57,7 +56,7 @@
 #include "wiced_bt_stack.h"
 #include "wiced_memory.h"
 #include "wiced_rtos.h"
-#ifndef CYW55572A0
+#ifndef CYW55572
 #include "wiced_hal_pspi.h"
 #include "wiced_hal_pcm.h"
 #endif
@@ -145,7 +144,7 @@ void codec_write_reg_config( codec_reg * reg_cfgs, uint32_t num_cfgs);
 
 void platform_bham_codec_marley_ctrl_bus_init(void)
 {
-#ifndef CYW55572A0
+#ifndef CYW55572
     if (codec_cs47l35_initialized == WICED_FALSE)
     {
 #ifdef CYW43012C0
@@ -198,7 +197,7 @@ void platform_bham_codec_marley_ctrl_bus_init(void)
 
 void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, const uint8_t *p_tx_buffer)
 {
-#ifndef CYW55572A0
+#ifndef CYW55572
     uint8_t p_spi_tx_buffer[6];
 
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
@@ -225,7 +224,7 @@ void platform_bham_codec_marley_write_cmd(uint32_t address, uint16_t tx_length, 
 
 void platform_bham_codec_marley_read_cmd(uint32_t address, uint16_t rx_length, uint8_t *p_rx_buffer)
 {
-#ifndef CYW55572A0
+#ifndef CYW55572
     uint8_t p_spi_tx_buffer[6];
 
     wiced_hal_gpio_set_pin_output(SPI_CS, GPIO_PIN_OUTPUT_LOW);
@@ -364,7 +363,7 @@ uint16_t driver_codec_read16(uint32_t address)
 
 uint32_t driver_codec_read32(uint32_t address)
 {
-#ifndef CYW55572A0
+#ifndef CYW55572
     uint8_t p_spi_rx_buffer[CODEC_SPI_DATA32_SIZE];
     uint32_t value;
 

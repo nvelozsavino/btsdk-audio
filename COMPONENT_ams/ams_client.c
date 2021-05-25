@@ -270,9 +270,15 @@ wiced_bool_t wiced_bt_ams_client_initialize(wiced_bt_ams_client_config_t *p_conf
     param.s_handle = p_config->s_handle;
     param.e_handle = p_config->e_handle;
 
+#if BTSTACK_VER > 0x01020000
+    status = wiced_bt_gatt_client_send_discover(p_config->conn_id, GATT_DISCOVER_CHARACTERISTICS, &param);
+
+    AMS_CLIENT_TRACE("wiced_bt_gatt_client_send_discover %d\n", status);
+#else
     status = wiced_bt_gatt_send_discover(p_config->conn_id, GATT_DISCOVER_CHARACTERISTICS, &param);
 
     AMS_CLIENT_TRACE("wiced_bt_gatt_send_discover %d\n", status);
+#endif
 
     (void) status;
 
@@ -346,12 +352,19 @@ void wiced_bt_ams_client_discovery_complete(wiced_bt_gatt_discovery_complete_t *
     wiced_bt_ams_client_event_data_t event_data = {0};
     wiced_bt_gatt_discovery_param_t param = {0};
     wiced_bt_gatt_status_t status;
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_gatt_write_hdr_t hdr;
+    uint8_t buf[2];
+    wiced_bt_gatt_discovery_type_t discovery_type = p_data->discovery_type;
+#else
     uint8_t buf[sizeof(wiced_bt_gatt_value_t) + 1];
     wiced_bt_gatt_value_t *p_write = (wiced_bt_gatt_value_t *) buf;
+    wiced_bt_gatt_discovery_type_t discovery_type = p_data->disc_type;
+#endif
 
     AMS_CLIENT_TRACE("[%s] state:%d\n", __FUNCTION__, ams_client.state);
 
-    if (p_data->disc_type == GATT_DISCOVER_CHARACTERISTICS)
+    if (discovery_type == GATT_DISCOVER_CHARACTERISTICS)
     {
         // done with AMS characteristics, start reading descriptor handles
         // make sure that all characteristics are present
@@ -391,19 +404,41 @@ void wiced_bt_ams_client_discovery_complete(wiced_bt_gatt_discovery_complete_t *
         param.s_handle          = ams_client.entity_update_val_hdl + 1;
         param.e_handle          = end_handle;
 
+#if BTSTACK_VER > 0x01020000
+        status = wiced_bt_gatt_client_send_discover(p_data->conn_id, GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS, &param);
+
+        AMS_CLIENT_TRACE("wiced_bt_gatt_client_send_discover %d\n", status);
+#else
         status = wiced_bt_gatt_send_discover(p_data->conn_id, GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS, &param);
 
         AMS_CLIENT_TRACE("wiced_bt_gatt_send_discover %d\n", status);
+#endif
 
         (void) status;
     }
-    else if (p_data->disc_type == GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS)
+    else if (discovery_type == GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS)
     {
         if (ams_client.state == AMS_CLIENT_STATE_DISCOVER_ENTITY_UPDATE_CCCD)
         {
             // done with descriptor discovery, register for notifications for data source by writing 1 into CCCD.
             ams_client.state = AMS_CLIENT_STATE_WRITE_ENTITY_UPDATE_CCCD;
 
+#if BTSTACK_VER > 0x01020000
+            memset(&hdr, 0, sizeof(hdr));
+
+            hdr.handle   = ams_client.entity_update_cccd_hdl;
+            hdr.offset   = 0;
+            hdr.len      = 2;
+            hdr.auth_req = GATT_AUTH_REQ_NONE;
+            buf[0] = GATT_CLIENT_CONFIG_NOTIFICATION & 0xff;
+            buf[1] = (GATT_CLIENT_CONFIG_NOTIFICATION >> 8) & 0xff;
+
+            // Register with the server to receive notification
+            status = wiced_bt_gatt_client_send_write(p_data->conn_id, GATT_REQ_WRITE,
+                    &hdr, buf, NULL);
+
+            AMS_CLIENT_TRACE("wiced_bt_gatt_client_send_write %d\n", status);
+#else /* !BTSTACK_VER */
             // Allocating a buffer to send the write request
             memset(buf, 0, sizeof(buf));
 
@@ -418,6 +453,7 @@ void wiced_bt_ams_client_discovery_complete(wiced_bt_gatt_discovery_complete_t *
             status = wiced_bt_gatt_send_write(p_data->conn_id, GATT_WRITE, p_write);
 
             AMS_CLIENT_TRACE("wiced_bt_gatt_send_write %d\n", status);
+#endif /* BTSTACK_VER */
 
             (void) status;
         }
@@ -622,6 +658,27 @@ void wiced_bt_ams_client_indication_handler(wiced_bt_gatt_operation_complete_t *
 wiced_bt_gatt_status_t ams_client_entity_update_write(uint8_t entity_id, uint8_t *p_attributes, int num_attributes)
 {
     wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
+#if BTSTACK_VER > 0x01020000
+    uint8_t buf[10];
+    uint8_t *p_write = buf;
+    wiced_bt_gatt_write_hdr_t gatt_hdr;
+
+    // Allocating a buffer to send the write request
+    memset(buf, 0, sizeof(buf));
+
+    gatt_hdr.handle   = ams_client.entity_update_val_hdl;
+    gatt_hdr.len      = num_attributes + 1;
+    gatt_hdr.auth_req = GATT_AUTH_REQ_NONE;
+    gatt_hdr.offset   = 0;
+
+    p_write[0] = entity_id;
+    memcpy(&p_write[1], p_attributes, num_attributes);
+
+    status = wiced_bt_gatt_client_send_write(ams_client.conn_id, GATT_REQ_WRITE, &gatt_hdr, p_write, NULL);
+
+    AMS_CLIENT_TRACE("wiced_bt_gatt_client_send_write conn_id:%d %d\n", ams_client.conn_id, status);
+
+#else /* !BTSTACK_VER */
     uint8_t                buf[sizeof(wiced_bt_gatt_value_t) + 10];
     wiced_bt_gatt_value_t *p_write = (wiced_bt_gatt_value_t*)buf;
 
@@ -637,6 +694,8 @@ wiced_bt_gatt_status_t ams_client_entity_update_write(uint8_t entity_id, uint8_t
     status = wiced_bt_gatt_send_write(ams_client.conn_id, GATT_WRITE, p_write);
 
     AMS_CLIENT_TRACE("wiced_bt_gatt_send_write conn_id:%d %d\n", ams_client.conn_id, status);
+
+#endif /* BTSTACK_VER */
     return status;
 }
 
@@ -650,8 +709,22 @@ wiced_bt_gatt_status_t ams_client_entity_update_write(uint8_t entity_id, uint8_t
 void wiced_bt_ams_client_send_remote_command(uint8_t remote_command_id)
 {
     wiced_bool_t           bfound = WICED_TRUE;
-    wiced_bt_gatt_value_t  write;
     wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_gatt_write_hdr_t write;
+
+    // Allocating a buffer to send the write request
+    memset(&write, 0, sizeof(wiced_bt_gatt_write_hdr_t));
+
+    write.handle    = ams_client.remote_control_val_hdl;
+    write.len       = 1;
+    write.offset    = 0;
+    write.auth_req  = GATT_AUTH_REQ_NONE;
+
+    status = wiced_bt_gatt_client_send_write(ams_client.conn_id, GATT_REQ_WRITE, &write, &remote_command_id, NULL);
+
+#else /* !BTSTACK_VER */
+    wiced_bt_gatt_value_t  write;
 
     // Allocating a buffer to send the write request
     memset(&write, 0, sizeof(wiced_bt_gatt_value_t));
@@ -662,6 +735,8 @@ void wiced_bt_ams_client_send_remote_command(uint8_t remote_command_id)
     write.value[0]  = remote_command_id;
 
     status = wiced_bt_gatt_send_write(ams_client.conn_id, GATT_WRITE, &write);
+
+#endif /* BTSTACK_VER */
     AMS_CLIENT_TRACE("wiced_bt_ams_client_send_remote_command (%d, %d, %d)\n", ams_client.conn_id, remote_command_id, status);
 
     (void) status;

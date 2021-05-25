@@ -68,6 +68,9 @@
 #include "bt_hs_spk_button.h"
 #include "wiced_audio_manager.h"
 #include "wiced_bt_a2dp_sink.h"
+#if BTSTACK_VER > 0x01020000
+#include "wiced_audio_sink_route_config.h"
+#endif
 #include "wiced_bt_hfp_hf.h"
 #include "wiced_sleep.h"
 ////// TEMP for compiling
@@ -575,7 +578,7 @@ void bt_hs_spk_control_acl_link_policy_sniff_mode_set_exclusive(wiced_bt_device_
  *
  * @param bdaddr - connection with peer device
  * @param link_policy - HCI_DISABLE_ALL_LM_MODES
- *                      HCI_ENABLE_MASTER_SLAVE_SWITCH
+ *                      HCI_ENABLE_ROLE_SWITCH
  *                      HCI_ENABLE_HOLD_MODE
  *                      HCI_ENABLE_SNIFF_MODE
  *                      HCI_ENABLE_PARK_MODE
@@ -650,8 +653,8 @@ wiced_bool_t bt_hs_spk_control_misc_data_content_check(uint8_t *p_data, uint32_t
  * Set the IUT role with the target connection
  *
  * @param[in]   bdaddr - peer device's address
- * @param[in]   target_role - HCI_ROLE_MASTER
- *                            HCI_ROLE_SLAVE
+ * @param[in]   target_role - HCI_ROLE_CENTRAL
+ *                            HCI_ROLE_PERIPHERAL
  *
  * @return      WICED_BT_BADARG
  *              WICED_BT_ERROR

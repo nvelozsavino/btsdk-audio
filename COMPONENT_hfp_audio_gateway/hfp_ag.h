@@ -106,11 +106,19 @@ typedef struct
     uint32_t   peer_features;
 } hfp_ag_connect_t;
 
+/* AT command */
+typedef struct
+{
+    uint8_t *cmd_ptr;
+    uint8_t cmd_len;
+} hfp_ag_at_cmd_t;
+
 /* union of data associated with AG callback */
 typedef union
 {
     hfp_ag_open_t    open;
     hfp_ag_connect_t conn;
+    hfp_ag_at_cmd_t  at_cmd;
 } hfp_ag_event_t;
 
 

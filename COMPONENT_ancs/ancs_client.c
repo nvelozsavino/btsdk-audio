@@ -447,19 +447,19 @@ void wiced_bt_ancs_client_discovery_result(wiced_bt_gatt_discovery_result_t *p_d
             {
                 ancs_client.notification_source_char_hdl = p_char->handle;
                 ancs_client.notification_source_val_hdl  = p_char->val_handle;
-                ANCS_CLIENT_TRACE("notification source hdl:%04x-%04x", ancs_client.notification_source_char_hdl, ancs_client.notification_source_val_hdl);
+                ANCS_CLIENT_TRACE("notification source hdl:%04x-%04x\n", ancs_client.notification_source_char_hdl, ancs_client.notification_source_val_hdl);
             }
             else if (memcmp(p_char->char_uuid.uu.uuid128, ANCS_CONTROL_POINT, 16) == 0)
             {
                 ancs_client.control_point_char_hdl = p_char->handle;
                 ancs_client.control_point_val_hdl  = p_char->val_handle;
-                ANCS_CLIENT_TRACE("control hdl:%04x-%04x", ancs_client.control_point_char_hdl, ancs_client.control_point_val_hdl);
+                ANCS_CLIENT_TRACE("control hdl:%04x-%04x\n", ancs_client.control_point_char_hdl, ancs_client.control_point_val_hdl);
             }
             else if (memcmp(p_char->char_uuid.uu.uuid128, ANCS_DATA_SOURCE, 16) == 0)
             {
                 ancs_client.data_source_char_hdl = p_char->handle;
                 ancs_client.data_source_val_hdl  = p_char->val_handle;
-                ANCS_CLIENT_TRACE("data source hdl:%04x-%04x", ancs_client.data_source_char_hdl, ancs_client.data_source_val_hdl);
+                ANCS_CLIENT_TRACE("data source hdl:%04x-%04x\n", ancs_client.data_source_char_hdl, ancs_client.data_source_val_hdl);
             }
         }
     }
@@ -471,12 +471,12 @@ void wiced_bt_ancs_client_discovery_result(wiced_bt_gatt_discovery_result_t *p_d
         if (ancs_client.state == ANCS_CLIENT_STATE_DISCOVER_NOTIFICATION_SOURCE_CCCD)
         {
             ancs_client.notification_source_cccd_hdl = p_data->discovery_data.char_descr_info.handle;
-            ANCS_CLIENT_TRACE("notification_source_cccd_hdl hdl:%04x", ancs_client.notification_source_cccd_hdl);
+            ANCS_CLIENT_TRACE("notification_source_cccd_hdl hdl:%04x\n", ancs_client.notification_source_cccd_hdl);
         }
         else if (ancs_client.state == ANCS_CLIENT_STATE_DISCOVER_DATA_SOURCE_CCCD)
         {
             ancs_client.data_source_cccd_hdl = p_data->discovery_data.char_descr_info.handle;
-            ANCS_CLIENT_TRACE("data_source_cccd_hdl hdl:%04x", ancs_client.data_source_cccd_hdl);
+            ANCS_CLIENT_TRACE("data_source_cccd_hdl hdl:%04x\n", ancs_client.data_source_cccd_hdl);
         }
     }
 }
@@ -488,10 +488,15 @@ void wiced_bt_ancs_client_discovery_complete(wiced_bt_gatt_discovery_complete_t 
 {
     uint16_t end_handle;
     wiced_bt_ancs_client_event_data_t event_data;
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_gatt_discovery_type_t discovery_type = p_data->discovery_type;
+#else
+    wiced_bt_gatt_discovery_type_t discovery_type = p_data->disc_type;
+#endif
 
     ANCS_CLIENT_TRACE("[%s] state:%d\n", __FUNCTION__, ancs_client.state);
 
-    if (p_data->disc_type == GATT_DISCOVER_CHARACTERISTICS)
+    if (discovery_type == GATT_DISCOVER_CHARACTERISTICS)
     {
         // done with ANCS characteristics, start reading descriptor handles
         // make sure that all characteristics are present
@@ -528,7 +533,7 @@ void wiced_bt_ancs_client_discovery_complete(wiced_bt_gatt_discovery_complete_t 
         ancs_client_send_discover(p_data->conn_id, GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS, UUID_DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
                                  ancs_client.notification_source_val_hdl + 1, end_handle);
     }
-    else if (p_data->disc_type == GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS)
+    else if (discovery_type == GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS)
     {
         if (ancs_client.state == ANCS_CLIENT_STATE_DISCOVER_NOTIFICATION_SOURCE_CCCD)
         {
@@ -604,6 +609,35 @@ void wiced_bt_ancs_client_write_rsp(wiced_bt_gatt_operation_complete_t *p_data)
  */
 static wiced_bt_gatt_status_t ancs_client_send_next_get_notification_attributes_command(uint32_t uid)
 {
+#if BTSTACK_VER > 0x01020000
+    uint8_t                buf[10];
+    wiced_bt_gatt_write_hdr_t  hdr;
+    uint8_t                *p_command = buf;
+    wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
+
+    // Allocating a buffer to send the write request
+    memset(buf, 0, sizeof(buf));
+
+    hdr.handle   = ancs_client.control_point_val_hdl;
+    hdr.offset   = 0;
+    hdr.auth_req = GATT_AUTH_REQ_NONE;
+
+    *p_command++ = ANCS_COMMAND_ID_GET_NOTIFICATION_ATTRIBUTES;
+    *p_command++ = uid & 0xff;
+    *p_command++ = (uid >> 8) & 0xff;
+    *p_command++ = (uid >> 16) & 0xff;
+    *p_command++ = (uid >> 24) & 0xff;
+
+    *p_command++ = ancs_client_notification_attribute[ancs_client.notification_attribute_inx];
+    if (ancs_client_notification_attribute_length[ancs_client.notification_attribute_inx] != 0)
+    {
+        *p_command++ = ancs_client_notification_attribute_length[ancs_client.notification_attribute_inx] & 0xff;
+        *p_command++ = (ancs_client_notification_attribute_length[ancs_client.notification_attribute_inx] >> 8) & 0xff;
+    }
+    hdr.len      = (uint8_t)(p_command - buf);
+    status = wiced_bt_gatt_client_send_write ( ancs_client.conn_id, GATT_REQ_WRITE, &hdr, p_command, NULL );
+
+#else /* !BTSTACK_VER */
     uint8_t                buf[sizeof(wiced_bt_gatt_value_t) + 10];
     wiced_bt_gatt_value_t  *p_write = (wiced_bt_gatt_value_t *)buf;
     uint8_t                *p_command = p_write->value;
@@ -631,6 +665,8 @@ static wiced_bt_gatt_status_t ancs_client_send_next_get_notification_attributes_
     p_write->len      = (uint8_t)(p_command - p_write->value);
     status = wiced_bt_gatt_send_write ( ancs_client.conn_id, GATT_WRITE, p_write );
 
+#endif /* BTSTACK_VER */
+
     ANCS_CLIENT_TRACE("%s status:%d", __FUNCTION__, status);
     return status;
 }
@@ -648,10 +684,37 @@ static wiced_bt_gatt_status_t ancs_client_send_next_get_notification_attributes_
  */
 wiced_bool_t wiced_ancs_client_send_remote_command(uint32_t uid, uint32_t action_id)
 {
+    wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
+#if BTSTACK_VER > 0x01020000
+    uint8_t buf[10];
+    wiced_bt_gatt_write_hdr_t hdr;
+    uint8_t *p_command = buf;
+    uint8_t *p_write = buf;
+
+    ANCS_CLIENT_TRACE("%s uid:%d action:%d\n", __FUNCTION__, uid, action_id);
+
+    // Allocating a buffer to send the write request
+    memset(buf, 0, sizeof(buf));
+
+    hdr.handle   = ancs_client.control_point_val_hdl;
+    hdr.offset   = 0;
+    hdr.auth_req = GATT_AUTH_REQ_NONE;
+
+    *p_write++ = ANCS_COMMAND_ID_PERFORM_NOTIFICATION_ACTION;
+    *p_write++ = uid & 0xff;
+    *p_write++ = (uid >> 8) & 0xff;
+    *p_write++ = (uid >> 16) & 0xff;
+    *p_write++ = (uid >> 24) & 0xff;
+
+    *p_write++ = action_id;
+
+    hdr.len    = (uint8_t)(p_write - p_command);
+    status = wiced_bt_gatt_client_send_write(ancs_client.conn_id, GATT_REQ_WRITE, &hdr, p_command, NULL);
+
+#else /* !BTSTACK_VER */
     uint8_t                buf[sizeof(wiced_bt_gatt_value_t) + 10];
     wiced_bt_gatt_value_t  *p_write = (wiced_bt_gatt_value_t *) buf;
     uint8_t                *p_command = p_write->value;
-    wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
 
     ANCS_CLIENT_TRACE("%s uid:%d action:%d\n", __FUNCTION__, uid, action_id);
 
@@ -672,6 +735,8 @@ wiced_bool_t wiced_ancs_client_send_remote_command(uint32_t uid, uint32_t action
 
     p_write->len      = (uint8_t)(p_command - p_write->value);
     status = wiced_bt_gatt_send_write(ancs_client.conn_id, GATT_WRITE, p_write);
+
+#endif /* BTSTACK_VER */
 
     ANCS_CLIENT_TRACE("%s status:%d", __FUNCTION__, status);
 
@@ -1062,6 +1127,27 @@ void wiced_bt_ancs_client_indication_handler(wiced_bt_gatt_operation_complete_t 
 static void ancs_client_set_client_config_descriptor(uint16_t conn_id, uint16_t handle, uint16_t value)
 {
     wiced_bt_gatt_status_t status = WICED_BT_GATT_SUCCESS;
+#if BTSTACK_VER > 0x01020000
+    uint8_t                buf[2];
+    wiced_bt_gatt_write_hdr_t hdr;
+    uint16_t               u16 = value;
+
+    // Allocating a buffer to send the write request
+    memset(buf, 0, sizeof(buf));
+
+    hdr.handle   = handle;
+    hdr.offset   = 0;
+    hdr.len      = 2;
+    hdr.auth_req = GATT_AUTH_REQ_NONE;
+    buf[0] = u16 & 0xff;
+    buf[1] = (u16 >> 8) & 0xff;
+
+    // Register with the server to receive notification
+    status = wiced_bt_gatt_client_send_write (conn_id, GATT_REQ_WRITE, &hdr, buf, NULL);
+
+    WICED_BT_TRACE("wiced_bt_gatt_client_send_write %d\n", status);
+
+#else /* !BTSTACK_VER */
     uint8_t                buf[sizeof(wiced_bt_gatt_value_t) + 1];
     wiced_bt_gatt_value_t *p_write = ( wiced_bt_gatt_value_t* )buf;
     uint16_t               u16 = value;
@@ -1080,6 +1166,7 @@ static void ancs_client_set_client_config_descriptor(uint16_t conn_id, uint16_t 
     status = wiced_bt_gatt_send_write(conn_id, GATT_WRITE, p_write);
 
     ANCS_CLIENT_TRACE("wiced_bt_gatt_send_write %d\n", status);
+#endif /* BTSTACK_VER */
 
     (void) status;
 }
@@ -1099,9 +1186,15 @@ static void ancs_client_send_discover(uint16_t conn_id, wiced_bt_gatt_discovery_
     param.s_handle = s_handle;
     param.e_handle = e_handle;
 
+#if BTSTACK_VER > 0x01020000
+    status = wiced_bt_gatt_client_send_discover(conn_id, type, &param);
+
+    ANCS_CLIENT_TRACE("wiced_bt_gatt_client_send_discover %d\n", status);
+#else
     status = wiced_bt_gatt_send_discover(conn_id, type, &param);
 
     ANCS_CLIENT_TRACE("wiced_bt_gatt_send_discover %d\n", status);
+#endif
 
     (void) status;
 }

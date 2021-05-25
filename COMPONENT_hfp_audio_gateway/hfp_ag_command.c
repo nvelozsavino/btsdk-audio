@@ -49,9 +49,9 @@
 #define BTA_AG_ERR_OP_NOT_SUPPORTED 4       /* Operation not supported */
 
 #define BTA_AG_CMD_MAX_VAL      32767       /* Maximum value is signed 16-bit value */
-#define BTA_AG_CIND_INFO        "(\"call\",(0,1)),(\"callsetup\",(0-3)),(\"callheld\",(0-2)),(\"service\",(0,1))"
-#define BTA_AG_CIND_VALUES      "0,0,0,1"
-
+#define BTA_AG_NUM_INDICATORS    7
+#define BTA_AG_CIND_INFO        "(\"call\",(0,1)),(\"callsetup\",(0-3)),(\"callheld\",(0-2)),(\"service\",(0,1),(\"battchg\",(0-5)),(\"signal\",(0-5)),(\"roam\",(0-1))"
+static char  BTA_AG_CIND_VALUES[20] = { '0', ',' , '0' , ',' , '0' , ',' , '1' ,',','5',',' ,'5',',' ,'0'};
 
 /* enumeration of HFP AT commands matches HFP command interpreter table */
 enum
@@ -168,7 +168,9 @@ enum
     BTA_AG_RES_COPS,
     BTA_AG_RES_RING,
     BTA_AG_RES_VGM,
-    BTA_AG_RES_VGS
+    BTA_AG_RES_VGS,
+    BTA_AG_RES_CLCC,
+    BTA_AG_RES_MAX,
 };
 
 /* AT result code constant table  (Indexed by result code) */
@@ -186,6 +188,7 @@ const tBTA_AG_RESULT bta_ag_result_tbl[] =
     {"RING",    BTA_AG_RES_FMT_NONE},
     {"+VGM=",   BTA_AG_RES_FMT_INT},
     {"+VGS=",   BTA_AG_RES_FMT_INT},
+    {"+CLCC: ", BTA_AG_RES_FMT_STR},
     {"",        BTA_AG_RES_FMT_STR}
 };
 
@@ -280,6 +283,44 @@ static void _send_error_to_hf (hfp_ag_session_cb_t *p_scb, INT16 errcode)
     _send_result_to_hf (p_scb, BTA_AG_RES_ERROR, NULL, 0);
 }
 
+/*******************************************************************************
+**
+** Function         _parse_bia_command
+**
+** Description      Parse AT+BIA parameter string.
+**
+** Returns          None.
+**
+*******************************************************************************/
+static void _parse_bia_command (hfp_ag_session_cb_t *p_scb, char *p_s)
+{
+    int                 indicator_index = 0;
+
+    while (p_s)
+    {
+        switch(*p_s)
+        {
+            case ',':
+                indicator_index++;
+                break;
+            case '0':
+                // Don't disable mandatory indicators
+                if (indicator_index > 2)
+                    p_scb->indicator_bit_map &= ~(1<<indicator_index);
+                break;
+            case '1':
+                p_scb->indicator_bit_map |= (1<<indicator_index);
+                break;
+            case 0:
+            default:
+                return;
+        }
+        if (indicator_index >= BTA_AG_NUM_INDICATORS)
+            return;
+        p_s++;
+    }
+}
+
 
 #if (BTM_WBS_INCLUDED == TRUE )
 /*******************************************************************************
@@ -357,17 +398,25 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
 
     switch (cmd)
     {
+        case BTA_AG_HF_CMD_D:
+            if (arg_type == BTA_AG_AT_NONE)
+                _send_OK_to_hf(p_scb);                          /* send OK */
+            break;
         case BTA_AG_HF_CMD_A:
         case BTA_AG_HF_CMD_VGS:
         case BTA_AG_HF_CMD_VGM:
         case BTA_AG_HF_CMD_CHUP:
         case BTA_AG_HF_CMD_CBC:
-        case BTA_AG_HF_CMD_BIA:
         case BTA_AG_HF_CMD_CNUM:
         case BTA_AG_HF_CMD_CCWA:
+        case BTA_AG_HF_CMD_CMEE:
+        case BTA_AG_HF_CMD_VTS:
             _send_OK_to_hf(p_scb);                          /* send OK */
-			break;
-
+            break;
+        case BTA_AG_HF_CMD_BIA:
+            _parse_bia_command(p_scb, p_arg);
+            _send_OK_to_hf(p_scb);                          /* send OK */
+            break;
         case BTA_AG_HF_CMD_CKPD:                            /* for HSP */
             _send_OK_to_hf(p_scb);                          /* send OK */
 
@@ -389,15 +438,12 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
                 }
             }
             break;
-
-        case BTA_AG_HF_CMD_BLDN:
-        case BTA_AG_HF_CMD_D:
+        case BTA_AG_HF_CMD_CLCC:
+            hfp_ag_hci_send_ag_event( HCI_CONTROL_AG_EVENT_CLCC_REQ, p_scb->app_handle, NULL );
+            break;
         case BTA_AG_HF_CMD_BINP:
         case BTA_AG_HF_CMD_NREC:
-        case BTA_AG_HF_CMD_CLCC:
         case BTA_AG_HF_CMD_BTRH:
-        case BTA_AG_HF_CMD_VTS:
-        case BTA_AG_HF_CMD_CMEE:
             _send_error_to_hf (p_scb, BTA_AG_ERR_OP_NOT_SUPPORTED);
             break;
 
@@ -414,6 +460,15 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
                 if ( !((ag_features & HFP_AG_FEAT_HF_IND) && (p_scb->hf_features & HFP_HF_FEAT_HF_IND)) )
                 {
                     hfp_ag_service_level_up (p_scb);
+                }
+            }
+            else if (arg_type == BTA_AG_AT_SET)
+            {
+                // receive enhance call control command and device won't support
+                if ( (strlen(p_arg) == 2) && !(ag_features & HFP_AG_FEAT_ECC))
+                {
+                    _send_error_to_hf (p_scb, BTA_AG_ERR_OP_NOT_SUPPORTED);
+                    return;
                 }
             }
             _send_OK_to_hf(p_scb);
@@ -460,12 +515,24 @@ static void _handle_command_from_hf (hfp_ag_session_cb_t *p_scb, UINT16 cmd, UIN
 
         case BTA_AG_HF_CMD_COPS:
             _send_OK_to_hf(p_scb);
-            _send_result_to_hf(p_scb, BTA_AG_RES_COPS, "0", 0);
+            if (arg_type == BTA_AG_AT_READ)
+            {
+                _send_result_to_hf(p_scb, BTA_AG_RES_COPS, "0", 0);
+            }
             break;
 
         case BTA_AG_HF_CMD_CMER:
             _send_OK_to_hf(p_scb);                          /* send OK */
-            hfp_ag_service_level_up (p_scb);
+            // 3,0,0,1 or 3,0,0,0
+            if (p_arg[6] == '1')
+            {
+                p_scb->cmer_enabled = WICED_TRUE;
+                hfp_ag_service_level_up (p_scb);
+            }
+            else if (p_arg[6] == '0')
+            {
+                p_scb->cmer_enabled = WICED_FALSE;
+            }
             break;
 
 #if (BTM_WBS_INCLUDED == TRUE )
@@ -530,6 +597,42 @@ uint8_t hfp_ag_send_VGS_to_hf (hfp_ag_session_cb_t *p_scb, INT16 gain)
     return _send_result_to_hf (p_scb, BTA_AG_RES_VGS, NULL, gain);
 }
 
+static wiced_bool_t hfp_ag_is_ciev_allowed(hfp_ag_session_cb_t *p_scb, char *data)
+{
+    char at_cmd[10] = "+CIEV: ";
+
+    if ( memcmp(data, at_cmd, strlen(at_cmd)) == 0)
+    {
+        int indicator_index = data[7]-'0';
+        if (p_scb->cmer_enabled == WICED_FALSE)
+            return WICED_FALSE;
+
+        return (p_scb->indicator_bit_map & (1 << (indicator_index-1)));
+    }
+    return WICED_TRUE;
+}
+
+uint8_t hfp_ag_send_cmd_str_to_hf (hfp_ag_session_cb_t *p_scb, char *data)
+{
+    // For CIEV verify indicator is enabled or not
+    if ( hfp_ag_is_ciev_allowed(p_scb, data) )
+    {
+        return _send_result_to_hf(p_scb, BTA_AG_RES_MAX, data, 0);
+    }
+    return 0;
+}
+
+void hfp_ag_send_OK_to_hf (hfp_ag_session_cb_t *p_scb)
+{
+    _send_OK_to_hf(p_scb);
+}
+
+void hfp_ag_set_cind(char *cind_val, uint8_t length)
+{
+    if (length <= sizeof(BTA_AG_CIND_VALUES))
+        memcpy(BTA_AG_CIND_VALUES, cind_val, length);
+}
+
 #if (BTM_WBS_INCLUDED == TRUE )
 /*******************************************************************************
 **
@@ -575,11 +678,15 @@ void hfp_ag_parse_AT_command (hfp_ag_session_cb_t *p_scb)
     UINT8       arg_type;
     char        *p_arg;
     INT16       int_arg = 0;
+    hfp_ag_at_cmd_t at_cmd;
 
     /* Remove CR/LF from the buffer */
     for (i = 0; i < p_scb->res_len; i++)
         if ( (p_scb->res_buf[i] == '\r') || (p_scb->res_buf[i] == '\n') )
           p_scb->res_buf[i] = 0;
+
+    at_cmd.cmd_ptr = (uint8_t *)p_scb->res_buf;
+    at_cmd.cmd_len = p_scb->res_len;
 
     for (i = 0; i < p_scb->res_len; i++)
     {
@@ -672,5 +779,7 @@ void hfp_ag_parse_AT_command (hfp_ag_session_cb_t *p_scb)
         break;              /* Only process one command at a time */
     }
 
+
+    hfp_ag_hci_send_ag_event( HCI_CONTROL_AG_EVENT_AT_CMD, p_scb->app_handle, ( hfp_ag_event_t * ) &at_cmd );
     p_scb->res_len = 0;
 }

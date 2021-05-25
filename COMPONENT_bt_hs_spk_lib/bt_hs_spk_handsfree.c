@@ -198,9 +198,15 @@ static void bt_hs_spk_handsfree_sco_data_app_callback(uint32_t ltch_len, uint8_t
     {
         if ((*bt_hs_spk_handsfree_cb.p_mic_data_add_cb)(p_mic_data, ltch_len))
         {
+#if defined(CYW55572A1)
+            ret_value = wiced_audio_sco_add_mic_stream(bt_hs_spk_handsfree_cb.p_active_context->sco_index,
+                                                       p_mic_data,
+                                                       (uint16_t) ltch_len);
+#else
             ret_value = wiced_bt_sco_output_stream(bt_hs_spk_handsfree_cb.p_active_context->sco_index,
                                                    p_mic_data,
                                                    (uint16_t) ltch_len);
+#endif
 
             if (ret_value != 0)
             {
@@ -225,8 +231,15 @@ static void bt_hs_spk_handsfree_cb_init(void)
     // SCO voice path
     if (bt_hs_spk_get_audio_sink() == AM_UART)
     {
+#if defined(CYW43012C0) || defined(CYW55572A0)
         bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_APP_CB;
         bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = &bt_hs_spk_handsfree_sco_data_app_callback;
+#elif defined(CYW55572A1)
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_HCI;
+        wiced_audio_sco_set_data_route(WICED_SCO_ROUTE_APP, &bt_hs_spk_handsfree_sco_data_app_callback);
+#else
+        WICED_BT_TRACE("Err: SCO_OVER_APP_CB does not support\n");
+#endif
     }
     else
     {
@@ -910,7 +923,7 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
                                                                   &p_ctx->sco_index);
         WICED_BT_TRACE("%s: %B status [%d] SCO INDEX [%d] \n", __func__, p_data->conn_data.remote_address, status, p_ctx->sco_index);
 
-        /* To simply the controller QoS, enforce the IUT be the slave if
+        /* To simply the controller QoS, enforce the IUT be the peripheral if
          * IUT support multi-point. */
         /*
          * We do it here to make it happen as soon as possible.
@@ -920,7 +933,11 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
          */
         if (BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS > 1)
         {
-            bt_hs_spk_control_bt_role_set(p_data->conn_data.remote_address, HCI_ROLE_SLAVE);
+#if BTSTACK_VER > 0x01020000
+            bt_hs_spk_control_bt_role_set(p_data->conn_data.remote_address, HCI_ROLE_PERIPHERAL);
+#else
+            bt_hs_spk_control_bt_role_set(p_data->conn_data.remote_address, HCI_ROLE_PERIPHERAL);
+#endif
         }
         break;
 
@@ -2917,8 +2934,15 @@ void bt_hs_spk_handsfree_sco_voice_path_update(wiced_bool_t uart)
 {
     if (uart)
     {
+#if defined(CYW43012C0) || defined(CYW55572A0)
         bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_APP_CB;
         bt_hs_spk_handsfree_cb.sco_voice_path.p_sco_data_cb = &bt_hs_spk_handsfree_sco_data_app_callback;
+#elif defined(CYW55572A1)
+        bt_hs_spk_handsfree_cb.sco_voice_path.path = WICED_BT_SCO_OVER_HCI;
+        wiced_audio_sco_set_data_route(WICED_SCO_ROUTE_APP, &bt_hs_spk_handsfree_sco_data_app_callback);
+#else
+        WICED_BT_TRACE("Err: SCO_OVER_APP_CB does not support\n");
+#endif
     }
     else
     {

@@ -1575,6 +1575,34 @@ void wiced_bt_avrc_tg_handle_get_item_attributes(uint8_t handle, uint8_t label, 
 
         }
 
+static uint8_t avrc_bld_get_num_of_item_rsp (wiced_bt_avrc_get_num_of_items_rsp_t *p_rsp, BT_HDR *p_pkt)
+{
+    UINT8   *p_data, *p_start, *p_len;
+    /* get the existing length, if any, and also the num attributes */
+    p_start = (UINT8 *)(p_pkt + 1) + p_pkt->offset;
+    p_data = p_len = p_start + 1; /* pdu */
+
+    if (p_rsp->status == AVRC_STS_NO_ERROR)
+    {
+        /* add fixed length - status(1) + uid_counter(2) + num_items(4) */
+        UINT16_TO_BE_STREAM(p_data, 7);
+        UINT8_TO_BE_STREAM(p_data, p_rsp->status);
+        UINT16_TO_BE_STREAM(p_data, p_rsp->uid_counter);
+        UINT32_TO_BE_STREAM(p_data, p_rsp->num_items);
+        p_pkt->len = (p_data - p_start);
+        return AVRC_STS_NO_ERROR;
+    }
+    else
+    {
+        /* add fixed lenth - status(1) */
+        UINT16_TO_BE_STREAM(p_data, 7);
+        UINT8_TO_BE_STREAM(p_data, p_rsp->status);
+        p_pkt->len = (p_data - p_start);
+        return p_rsp->status;
+    }
+}
+
+
 #if BTSTACK_VER >= 0x01020000
 void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t label, wiced_bt_avrc_command_t * p_command, wiced_bt_avrc_xmit_buf_t **pp_rsp )
 #else
@@ -1602,6 +1630,8 @@ void wiced_bt_avrc_tg_handle_get_total_num_of_items(uint8_t handle, uint8_t labe
 #else
     status = wiced_bt_avrc_bld_response(handle, &avrc_rsp, pp_rsp);
 #endif
+    avrc_bld_get_num_of_item_rsp(p_rsp_data,*pp_rsp);
+
     UNUSED_VARIABLE(status);
     return;
             }
@@ -1657,9 +1687,23 @@ void wiced_bt_avrc_tg_browse_command_handler( uint8_t handle, uint8_t label, uin
     avrc_rsp.rsp.opcode = opcode;
     avrc_rsp.rsp.pdu    = pdu_id;
     avrc_rsp.rsp.status = status;
-
-    avrc_sts = wiced_bt_avrc_parse_command((wiced_bt_avrc_msg_t *)p_msg, &command,  temp_buff, APP_AVRC_TEMP_BUF);
-
+   if(pdu_id == AVRC_PDU_GET_TOTAL_NUM_OF_ITEMS)
+   {
+       BE_STREAM_TO_UINT8 (command.get_num_of_items.scope, p_in);
+       if (command.get_num_of_items.scope > AVRC_SCOPE_NOW_PLAYING)
+       {
+               avrc_sts = AVRC_STS_BAD_SCOPE;
+       }
+       else
+       {
+               avrc_sts = AVRC_STS_NO_ERROR;
+               WICED_BTAVRCP_TRACE("%s: AVRC_PDU_GET_TOTAL_NUM_OF_ITEMS : NO ERROR", __FUNCTION__);
+       }
+   }
+   else
+    {
+        avrc_sts = wiced_bt_avrc_parse_command((wiced_bt_avrc_msg_t *)p_msg, &command,  temp_buff, APP_AVRC_TEMP_BUF);
+    }
     if(temp_buff == NULL)
     {
         WICED_BTAVRCP_TRACE("error wiced_bt_get_buffer returns NULL\n");

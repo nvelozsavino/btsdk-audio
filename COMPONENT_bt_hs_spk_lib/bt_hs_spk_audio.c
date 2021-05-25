@@ -143,6 +143,19 @@ static bt_hs_spk_audio_context_t *bt_hs_spk_audio_context_get_address(wiced_bt_d
 static bt_hs_spk_audio_context_t *bt_hs_spk_audio_context_get_avrc_handle(uint16_t handle, wiced_bool_t allocate);
 static void                       bt_hs_spk_audio_context_switch_out(void);
 
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_metadata_cmd_t *avrc_cmd);
+static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_device_address_t remote_addr,
+        wiced_result_t status, wiced_bt_avrc_ct_connection_state_t connection_state, uint32_t peer_features);
+static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ctype_t ctype, wiced_bt_avrc_pass_thru_hdr_t *avrc_pass_rsp);
+static void bt_hs_spk_audio_avrc_response_cb(uint8_t handle, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_get_cur_player_app_value(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp);
+#else /* !BTSTACK_VER */
 static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_command_t *avrc_cmd);
 static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_device_address_t remote_addr,
         wiced_result_t status, wiced_bt_avrc_ct_connection_state_t connection_state, uint32_t peer_features);
@@ -154,6 +167,7 @@ static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_con
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
 static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp);
+#endif /* BTSTACK_VER */
 #ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
 static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t op_id);
 #endif
@@ -319,11 +333,18 @@ void bt_hs_spk_audio_streaming_recover(void)
         if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED &&
                 bt_hs_spk_audio_cb.p_active_context->a2dp.state != BT_HS_SPK_AUDIO_A2DP_STATE_STARTED)
         {
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
             result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                             AVRC_ID_PLAY,
                                                             AVRC_STATE_PRESS,
                                                             0,
                                                             NULL);
+#endif
         }
         else
         {
@@ -346,7 +367,12 @@ void bt_hs_spk_audio_streaming_recover(void)
                                                 NULL);
         }
 
+#if BTSTACK_VER > 0x01020000
+        wiced_audio_sink_route_config_stream_switch(
+                bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#else
         wiced_bt_a2dp_sink_streaming_configure_route(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#endif
 
         bt_hs_spk_audio_cb.p_active_context->a2dp.interrupted = WICED_FALSE;
 
@@ -378,7 +404,12 @@ void bt_hs_spk_audio_streaming_resume(void)
 
     bt_hs_spk_audio_audio_manager_stream_start(&bt_hs_spk_audio_cb.p_active_context->audio_config);
 
+#if BTSTACK_VER > 0x01020000
+    wiced_audio_sink_route_config_stream_start(
+            bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#else
     wiced_bt_a2dp_sink_streaming_start(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#endif
 
 }
 
@@ -391,7 +422,12 @@ void bt_hs_spk_audio_local_streaming_stop(void)
     }
 
     /* Reset the lite host. */
+#if BTSTACK_VER > 0x01020000
+    wiced_audio_sink_route_config_stream_stop(
+            bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#else
     wiced_bt_a2dp_sink_streaming_stop(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#endif
 
     /* Stop the Audio Manager streaming for A2DP. */
     bt_hs_spk_audio_audio_manager_stream_stop();
@@ -504,6 +540,19 @@ wiced_result_t bt_hs_spk_audio_init(bt_hs_spk_control_config_audio_t *p_config, 
         WICED_BT_TRACE("Error: wiced_bt_a2dp_sink_init fail (%d)\n");
         return result;
     }
+
+#if BTSTACK_VER > 0x01020000
+    /* initialize audio sink route config */
+    result = wiced_audio_sink_route_config_init(
+            &p_config->a2dp.p_audio_config->p_param,
+            &p_config->a2dp.p_audio_config->ext_codec);
+    if (result != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("Error: wiced_audio_sink_route_config_init fail (%d)\n",
+                result);
+        return result;
+    }
+#endif
 
     /* Set the Audio Module as the default service. */
     bt_hs_spk_audio_app_service_set();
@@ -653,11 +702,15 @@ static void bt_hs_spk_audio_a2dp_sink_cb_connect(bt_hs_spk_audio_context_t *p_ct
             bt_hs_spk_audio_cb.p_active_context = p_ctx;
         }
 
-        /* To simply the controller QoS, enforce the IUT be the slave if
+        /* To simply the controller QoS, enforce the IUT be the peripheral if
          * IUT support multi-point. */
         if (BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS > 1)
         {
-            bt_hs_spk_control_bt_role_set(p_data->connect.bd_addr, HCI_ROLE_SLAVE);
+#if BTSTACK_VER > 0x01020000
+            bt_hs_spk_control_bt_role_set(p_data->connect.bd_addr, HCI_ROLE_PERIPHERAL);
+#else
+            bt_hs_spk_control_bt_role_set(p_data->connect.bd_addr, HCI_ROLE_PERIPHERAL);
+#endif
         }
     }
 
@@ -683,6 +736,11 @@ static void bt_hs_spk_audio_a2dp_sink_cb_disconnect(bt_hs_spk_audio_context_t *p
                    p_data->disconnect.result,
                    bt_hs_spk_audio_cb.p_active_context,
                    p_ctx);
+
+#if BTSTACK_VER > 0x01020000
+    /* close audio sink route streaming */
+    wiced_audio_sink_route_config_close(p_data->disconnect.handle);
+#endif
 
     /* Update playstate. */
     bt_hs_spk_audio_playstate_update(p_data->disconnect.bd_addr, WICED_FALSE);
@@ -768,7 +826,12 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
 
                 bt_hs_spk_audio_streaming_pause(p_ctx);
 
+#if BTSTACK_VER > 0x01020000
+                wiced_audio_sink_route_config_stream_stop_and_switch(
+                        bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#else
                 wiced_bt_a2dp_sink_streaming_stop_and_switch(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#endif
 
                 /* Request to suspend this audio streaming to reduce the OTA packets
                  * (AVDTP Media packets). */
@@ -799,6 +862,14 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_ind(bt_hs_spk_audio_context_t *p_
                                                     p_data->start_ind.label,
                                                     response_status))
         {
+#if BTSTACK_VER > 0x01020000
+            if (!bt_hs_spk_audio_cb.is_audio_sink_streaming_suspended)
+            {
+                /* configure audio sink route */
+                wiced_audio_sink_route_config_stream_switch(
+                        p_data->start_ind.handle);
+            }
+#endif
             /* Maintain State */
             p_ctx->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_STARTED;
 
@@ -834,6 +905,14 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_cfm(bt_hs_spk_audio_context_t *p_
 
     p_ctx->a2dp.is_streaming_started = p_data->start_cfm.result == WICED_BT_SUCCESS ? WICED_TRUE : WICED_FALSE;
 
+#if BTSTACK_VER > 0x01020000
+    if (p_data->start_cfm.result != WICED_BT_SUCCESS)
+    {
+        /* stop audio sink streaming if start failed */
+        wiced_audio_sink_route_config_stream_stop(p_data->start_cfm.handle);
+    }
+#endif
+
     if ((bt_hs_spk_audio_cb.p_active_context != NULL) &&
         (bt_hs_spk_audio_cb.p_active_context != p_ctx))
     {
@@ -850,7 +929,12 @@ static void bt_hs_spk_audio_a2dp_sink_cb_start_cfm(bt_hs_spk_audio_context_t *p_
 
                 bt_hs_spk_audio_streaming_pause(p_ctx);
 
+#if BTSTACK_VER > 0x01020000
+                wiced_audio_sink_route_config_stream_stop_and_switch(
+                        bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#else
                 wiced_bt_a2dp_sink_streaming_stop_and_switch(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#endif
 
                 return;
             }
@@ -898,6 +982,11 @@ static void bt_hs_spk_audio_a2dp_sink_cb_suspend(bt_hs_spk_audio_context_t *p_ct
                    p_ctx);
 
     p_ctx->a2dp.is_streaming_started = WICED_FALSE;
+
+#if BTSTACK_VER > 0x01020000
+    /* stop audio sink streaming */
+    wiced_audio_sink_route_config_stream_stop(p_data->suspend.handle);
+#endif
 
     /* Update playstate. */
     bt_hs_spk_audio_playstate_update(p_data->suspend.bd_addr, WICED_FALSE);
@@ -1068,6 +1157,32 @@ static void bt_hs_spk_audio_a2dp_sink_cb_codec_config(bt_hs_spk_audio_context_t 
            sizeof(wiced_bt_a2dp_codec_info_t));
 
     /* Update codec route if the sink route is set to use UART. */
+#if BTSTACK_VER > 0x01020000
+    route_config.route = AUDIO_ROUTE_I2S;
+    route_config.is_master = WICED_TRUE;
+
+    /* change route depend on sink type, no need to do update_route_config */
+    if (bt_hs_spk_get_audio_sink() == AM_UART)
+    {
+        if (p_data->codec_config.codec.codec_id == WICED_BT_A2DP_CODEC_SBC)
+        {
+            route_config.route = AUDIO_ROUTE_UART;
+        }
+        else
+        {
+            route_config.route = AUDIO_ROUTE_COMPRESSED_TRANSPORT;
+        }
+    }
+
+    /* set route codec configuration to library */
+    wiced_audio_sink_route_config_set(
+            route_config.route,
+            &p_data->codec_config.codec,
+            p_data->codec_config.handle,
+            p_data->codec_config.cp_type,
+            route_config.is_master);
+
+#else /* !BTSTACK_VER > 0x01020000 */
     if (bt_hs_spk_get_audio_sink() == AM_UART)
     {
         if (p_data->codec_config.codec.codec_id == WICED_BT_A2DP_CODEC_SBC)
@@ -1083,6 +1198,7 @@ static void bt_hs_spk_audio_a2dp_sink_cb_codec_config(bt_hs_spk_audio_context_t 
 
         wiced_bt_a2dp_sink_update_route_config(p_ctx->a2dp.handle, &route_config);
     }
+#endif /* BTSTACK_VER > 0x01020000 */
 }
 
 /**************************************************************************************************
@@ -1442,15 +1558,30 @@ static wiced_result_t bt_hs_spk_audio_button_handler_pause_play(void)
          * to start the streaming.*/
         if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED)
         {
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
             result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                             AVRC_ID_PLAY,
                                                             AVRC_STATE_PRESS,
                                                             0,
                                                             NULL);
+#endif
         }
         else
         {
             result = wiced_bt_a2dp_sink_start(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#if BTSTACK_VER > 0x01020000
+            if (result == WICED_SUCCESS)
+            {
+                /* configure audio sink route */
+                wiced_audio_sink_route_config_stream_switch(
+                        bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+            }
+#endif
         }
 
         if (result == WICED_SUCCESS)
@@ -1478,21 +1609,35 @@ static wiced_result_t bt_hs_spk_audio_button_handler_pause_play(void)
         if ((bt_hs_spk_audio_cb.p_active_context->avrc.playstate == AVRC_PLAYSTATE_STOPPED) ||
             (bt_hs_spk_audio_cb.p_active_context->avrc.playstate == AVRC_PLAYSTATE_PAUSED))
         {
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
             result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                             AVRC_ID_PLAY,
                                                             AVRC_STATE_PRESS,
                                                             0,
                                                             NULL);
+#endif
         }
         else
         {
             WICED_BT_TRACE("Send AVRC PAUSE to %B\n", bt_hs_spk_audio_cb.p_active_context->peerBda);
 
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PAUSE,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
             result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                             AVRC_ID_PAUSE,
                                                             AVRC_STATE_PRESS,
                                                             0,
                                                             NULL);
+#endif
         }
     }
 
@@ -1540,11 +1685,18 @@ static wiced_result_t bt_hs_spk_audio_button_handler_skip_stop_fastforward_rewin
      * AVRC is connected. */
     if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED)
     {
+#if BTSTACK_VER > 0x01020000
+        result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                        op_id,
+                                                        key_state,
+                                                        0);
+#else
         result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
                                                         op_id,
                                                         key_state,
                                                         0,
                                                         NULL);
+#endif
         /* This print is for SVT automation script */
         if (op_id == AVRC_ID_FORWARD)
             WICED_BT_TRACE("AVRC: FORWARD\n");
@@ -1607,9 +1759,12 @@ static wiced_result_t bt_hs_spk_audio_button_handler(app_service_action_t action
         case ACTION_FAST_FORWARD_RELEASE:
             ret = bt_hs_spk_audio_button_handler_skip_stop_fastforward_rewind(AVRC_ID_FAST_FOR, AVRC_STATE_RELEASE);
             break;
-
+	case ACTION_MULTI_FUNCTION_LONG_RELEASE:
+#ifdef ENABLE_PTS_TESTING
+            bt_hs_spk_audio_disconnect(bt_hs_spk_audio_cb.p_active_context->peerBda);
+            break;
+#endif
         case ACTION_MULTI_FUNCTION_SHORT_RELEASE:
-        case ACTION_MULTI_FUNCTION_LONG_RELEASE:
         case NO_ACTION:
         default:
             WICED_BT_TRACE("%s -- No Action\n",__func__);
@@ -1930,11 +2085,18 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                        /* Transmit the AVRC command to pause the A2DP streaming. */
                        WICED_BT_TRACE("Send AVRC PAUSE to %B\n", p_ctx->peerBda);
 
+#if BTSTACK_VER > 0x01020000
+                       wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)p_ctx->avrc.handle,
+                                                              AVRC_ID_PAUSE,
+                                                              AVRC_STATE_PRESS,
+                                                              0);
+#else
                        wiced_bt_avrc_ct_send_pass_through_cmd(p_ctx->avrc.handle,
                                                               AVRC_ID_PAUSE,
                                                               AVRC_STATE_PRESS,
                                                               0,
                                                               NULL);
+#endif
 
                        /* Check if the source is already transmitting the media packets. */
                        if (p_ctx->a2dp.is_streaming_started)
@@ -1969,7 +2131,12 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                            if (p_ctx->a2dp.is_streaming_started)
                            {
                                /* The Audio streaming is paused before and not suspended yet. */
+#if BTSTACK_VER > 0x01020000
+                               wiced_audio_sink_route_config_stream_stop_and_switch(
+                                       p_ctx->a2dp.handle);
+#else
                                wiced_bt_a2dp_sink_streaming_stop_and_switch(p_ctx->a2dp.handle);
+#endif
 
                                /* Request to suspend this audio streaming in current active context
                                 * to reduce the OTA packets (AVDTP Media packets). */
@@ -1986,7 +2153,12 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                             * corresponding A2DP START command. */
                            if (p_ctx->a2dp.is_streaming_started)
                            {
+#if BTSTACK_VER > 0x01020000
+                               wiced_audio_sink_route_config_stream_start(
+                                       p_ctx->a2dp.handle);
+#else
                                wiced_bt_a2dp_sink_streaming_start(p_ctx->a2dp.handle);
+#endif
                            }
                        }
 
@@ -2009,8 +2181,23 @@ static void bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, 
                 /* Check if the audio streaming is already started by the source device. */
                 if (p_ctx->a2dp.is_streaming_started == WICED_FALSE)
                 {   // audio streaming does not start yet
+#if BTSTACK_VER > 0x01020000
+                    wiced_result_t result;
+
+                    /* Request to start this audio streaming. */
+                    result = wiced_bt_a2dp_sink_start(p_ctx->a2dp.handle);
+
+                    /* configure audio sink route */
+                    if (result == WICED_SUCCESS)
+                    {
+                        wiced_audio_sink_route_config_stream_switch(
+                                bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+                    }
+#else /* !BTSTACK_VER > 0x01020000 */
                     /* Request to start this audio streaming. */
                     wiced_bt_a2dp_sink_start(p_ctx->a2dp.handle);
+
+#endif /* BTSTACK_VER > 0x01020000 */
                 }
             }
             break;
@@ -2039,11 +2226,18 @@ static wiced_result_t bt_hs_spk_audio_streaming_pause(bt_hs_spk_audio_context_t 
     {
         WICED_BT_TRACE("Send AVRC PAUSE to %B\n", p_ctx->peerBda);
 
+#if BTSTACK_VER > 0x01020000
+        return wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)p_ctx->avrc.handle,
+                                                      AVRC_ID_PAUSE,
+                                                      AVRC_STATE_PRESS,
+                                                      0);
+#else
         return wiced_bt_avrc_ct_send_pass_through_cmd(p_ctx->avrc.handle,
                                                       AVRC_ID_PAUSE,
                                                       AVRC_STATE_PRESS,
                                                       0,
                                                       NULL);
+#endif
     }
     else
     {
@@ -2190,13 +2384,25 @@ static void bt_hs_spk_audio_avrc_connection_state_cb(uint8_t handle, wiced_bt_de
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_metadata_cmd_t *avrc_cmd)
+#else
 static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_command_t *avrc_cmd)
+#endif
 {
     bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_avrc_handle(handle, WICED_FALSE);
+    uint8_t pdu;
+    uint8_t volume;
+
+#if BTSTACK_VER > 0x01020000
+    pdu = avrc_cmd->metadata_hdr.pdu;
+#else
+    pdu = avrc_cmd->pdu;
+#endif
 
     WICED_BT_TRACE("bt_hs_spk_audio_avrc_command_cb (%d, 0x%02X, 0x%08X 0x%08X)\n",
                    handle,
-                   avrc_cmd->pdu,
+                   pdu,
                    bt_hs_spk_audio_cb.p_active_context,
                    p_ctx);
 
@@ -2210,11 +2416,16 @@ static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_comman
         return;
     }
 
-    switch( avrc_cmd->pdu )
+    switch( pdu )
     {
         case AVRC_PDU_SET_ABSOLUTE_VOLUME:
+#if BTSTACK_VER > 0x01020000
+            volume = avrc_cmd->u.volume;
+#else
+            volume = avrc_cmd->volume.volume;
+#endif
             /* Update absolute volume for A2DP. */
-            bt_hs_spk_audio_volume_update(avrc_cmd->volume.volume,
+            bt_hs_spk_audio_volume_update(volume,
                                           WICED_FALSE,
                                           bt_hs_spk_audio_cb.p_active_context == p_ctx ? WICED_TRUE : WICED_FALSE,
                                           p_ctx);
@@ -2242,8 +2453,13 @@ static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_comman
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb(uint8_t handle, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb(uint8_t handle, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
+    uint8_t pdu;
     bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_avrc_handle(handle, WICED_FALSE);
 
     if (bt_hs_spk_audio_cb.config.avrc_ct.rsp_cb.pre_handler)
@@ -2256,7 +2472,20 @@ static void bt_hs_spk_audio_avrc_response_cb(uint8_t handle, wiced_bt_avrc_respo
         return;
     }
 
-    switch (avrc_rsp->pdu)
+#if BTSTACK_VER > 0x01020000
+    if(avrc_rsp->hdr.opcode == AVRC_OP_BROWSE)
+    {
+        pdu =  avrc_rsp->type.browse_rsp.pdu_id;
+    }
+    else
+    {
+        pdu = avrc_rsp->type.metadata.metadata_hdr.pdu;
+    }
+#else
+    pdu = avrc_rsp->pdu;
+#endif
+
+    switch (pdu)
     {
     case AVRC_PDU_REGISTER_NOTIFICATION:
         bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(p_ctx, avrc_rsp);
@@ -2306,13 +2535,30 @@ static void bt_hs_spk_audio_avrc_response_cb(uint8_t handle, wiced_bt_avrc_respo
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ctype_t ctype, wiced_bt_avrc_pass_thru_hdr_t *avrc_pass_rsp)
+#else
 static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_msg_pass_t *avrc_pass_rsp)
+#endif
 {
     bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_avrc_handle(handle, WICED_FALSE);
+    uint8_t operation_id;
+
+#if BTSTACK_VER > 0x01020000
+    operation_id = avrc_pass_rsp->operation_id;
+#else
+    uint8_t ctype = avrc_pass_rsp->hdr.ctype;
+    operation_id = avrc_pass_rsp->op_id;
+#endif
 
     if (bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.pre_handler)
     {
+#if BTSTACK_VER > 0x01020000
+        bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.pre_handler(handle,
+                ctype, avrc_pass_rsp);
+#else
         bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.pre_handler(handle, avrc_pass_rsp);
+#endif
     }
 
     if (p_ctx == NULL)
@@ -2320,25 +2566,32 @@ static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ms
         return;
     }
 
-    if (avrc_pass_rsp->hdr.ctype == AVRC_RSP_ACCEPT)
+    if (ctype == AVRC_RSP_ACCEPT)
     {
         /* Assume that if the state of the keypress is "press" they will want to "release" */
         if (avrc_pass_rsp->state == AVRC_STATE_PRESS)
         {
             /* Exceptions for FFWD and REW */
-            if ((avrc_pass_rsp->op_id != AVRC_ID_FAST_FOR) &&
-                (avrc_pass_rsp->op_id != AVRC_ID_REWIND))
+            if ((operation_id != AVRC_ID_FAST_FOR) &&
+                (operation_id != AVRC_ID_REWIND))
             {
+#if BTSTACK_VER > 0x01020000
                 wiced_bt_avrc_ct_send_pass_through_cmd(handle,
-                                                       avrc_pass_rsp->op_id,
+                                                       operation_id,
+                                                       AVRC_STATE_RELEASE,
+                                                       0);
+#else
+                wiced_bt_avrc_ct_send_pass_through_cmd(handle,
+                                                       operation_id,
                                                        AVRC_STATE_RELEASE,
                                                        0,
                                                        NULL);
+#endif
             }
         }
         else
         {   // AVRC_STATE_RELEASE
-            switch (avrc_pass_rsp->op_id)
+            switch (operation_id)
             {
             case AVRC_ID_PLAY:  // 0x44, play
             case AVRC_ID_STOP:  // 0x45, stop
@@ -2346,8 +2599,8 @@ static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ms
                 /* Update palystate. */
                 if (p_ctx->avrc.state == REMOTE_CONTROL_CONNECTED)
                 {
-                    p_ctx->avrc.playstate = avrc_pass_rsp->op_id == AVRC_ID_PLAY ? AVRC_PLAYSTATE_PLAYING :
-                                            avrc_pass_rsp->op_id == AVRC_ID_STOP ? AVRC_PLAYSTATE_STOPPED :
+                    p_ctx->avrc.playstate = operation_id == AVRC_ID_PLAY ? AVRC_PLAYSTATE_PLAYING :
+                                            operation_id == AVRC_ID_STOP ? AVRC_PLAYSTATE_STOPPED :
                                             AVRC_PLAYSTATE_PAUSED;
                 }
                 break;
@@ -2359,12 +2612,17 @@ static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ms
     else
     {
         WICED_BT_TRACE( "%s: op_id: 0x%x failed: 0x%x\n", __FUNCTION__,
-                        avrc_pass_rsp->op_id, avrc_pass_rsp->hdr.ctype );
+                        operation_id, ctype );
     }
 
     if (bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.post_handler)
     {
+#if BTSTACK_VER > 0x01020000
+        bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.post_handler(handle,
+                ctype, avrc_pass_rsp);
+#else
         bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rsp_cb.post_handler(handle, avrc_pass_rsp);
+#endif
     }
 }
 
@@ -2379,7 +2637,11 @@ static void bt_hs_spk_audio_avrc_passthrough_cb(uint8_t handle, wiced_bt_avrc_ms
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
     /* Track information to retrieve when a track change occurs */
     uint8_t track_element_attributes[] = { AVRC_MEDIA_ATTR_ID_TITLE,
@@ -2393,16 +2655,26 @@ static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_s
             "Playing",
             "Paused",
     };
+    uint8_t event_id;
+    wiced_bt_avrc_playstate_t play_status;
 
-    switch (avrc_rsp->reg_notif.event_id)
+#if BTSTACK_VER > 0x01020000
+    event_id = avrc_rsp->type.metadata.u.reg_notif.event_id;
+    play_status = avrc_rsp->type.metadata.u.reg_notif.param.play_status;
+#else
+    event_id = avrc_rsp->reg_notif.event_id;
+    play_status = avrc_rsp->reg_notif.param.play_status;
+#endif
+
+    switch (event_id)
     {
     case AVRC_EVT_PLAY_STATUS_CHANGE: /**< Playback Status Changed */
         WICED_BT_TRACE("AVRC Play Status Change (0x%02X -> 0x%02X)\n",
                        p_ctx->avrc.playstate,
-                       avrc_rsp->reg_notif.param.play_status);
+                       play_status);
 
         /* Update AVRC playstate. */
-        p_ctx->avrc.playstate = avrc_rsp->reg_notif.param.play_status;
+        p_ctx->avrc.playstate = play_status;
         if (p_ctx->avrc.playstate <= AVRC_PLAYSTATE_PAUSED)
         {
             /* This print is for SVT automation script */
@@ -2456,12 +2728,56 @@ static void bt_hs_spk_audio_avrc_response_cb_registered_notification_rsp(bt_hs_s
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
     int i;
     int rsp_size;
     char *rsp;
 
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_avrc_attr_entry_t attr_entry;
+    int xx;
+    int offset = 0;
+    wiced_bt_avrc_metadata_get_element_attrs_rsp_t *elem_attrs_rsp = &avrc_rsp->type.metadata.u.get_elem_attrs;
+    for(xx = 0; xx < elem_attrs_rsp->num_attr; xx++)
+    {
+       int read = wiced_bt_avrc_parse_get_element_attr_rsp_from_stream(elem_attrs_rsp->p_attr_stream + offset, (elem_attrs_rsp->length - offset), &attr_entry);
+       if(read >= 0)
+       {
+            offset += read;
+#if 0
+            WICED_BT_TRACE( "[%s]:attr: %d, strlen: %d\n", __FUNCTION__,
+                                    attr_entry.attr_id, attr_entry.name.name.str_len);
+#endif
+            rsp = (char *) wiced_bt_get_buffer(attr_entry.name.name.str_len + 1);
+            if (rsp != NULL)
+            {
+                strncpy(&rsp[0], (char*)attr_entry.name.name.p_str, attr_entry.name.name.str_len);
+                rsp[attr_entry.name.name.str_len ] = '\0';
+                switch (attr_entry.attr_id)
+                {
+                case AVRC_MEDIA_ATTR_ID_TITLE:
+                    WICED_BT_TRACE("\n\rTitle : %s\n",&rsp[0]);
+                    break;
+                case AVRC_MEDIA_ATTR_ID_ARTIST:
+                    WICED_BT_TRACE("\n\rArtist : %s\n",&rsp[0]);
+                    break;
+                case AVRC_MEDIA_ATTR_ID_ALBUM:
+                    WICED_BT_TRACE("\n\rAlbum : %s\n",&rsp[0]);
+                    break;
+                default:
+                    break;
+                }
+                wiced_bt_free_buffer(rsp);
+            }
+       }
+    }
+
+#else /* !BTSTACK_VER */
     wiced_bt_avrc_get_elem_attrs_rsp_t *elem_attrs_rsp = &avrc_rsp->get_elem_attrs;
 
     /* If successful, make room for the response. */
@@ -2503,6 +2819,7 @@ static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk
             }
         }
     }
+#endif /* BTSTACK_VER */
 }
 
 /**
@@ -2517,9 +2834,17 @@ static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_avrc_metadata_list_app_attr_rsp_t *list_app_attr = &avrc_rsp->type.metadata.u.list_app_attr;
+#else
     wiced_bt_avrc_list_app_attr_rsp_t *list_app_attr = &avrc_rsp->list_app_attr;
+#endif
     uint8_t         i;
     wiced_result_t  result;
 
@@ -2528,13 +2853,18 @@ static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs
     {
         for (i = 0; i < list_app_attr->num_attr; i++)
         {
-            WICED_BT_TRACE( "[%s]: attribute[%d]: %d\n", __FUNCTION__, i, list_app_attr->attrs[i] );
+#if BTSTACK_VER > 0x01020000
+            uint8_t attr = list_app_attr->p_attrs[i];
+#else
+            uint8_t attr = list_app_attr->attrs[i];
+#endif
+            WICED_BT_TRACE( "[%s]: attribute[%d]: %d\n", __FUNCTION__, i, attr );
 
-            if (list_app_attr->attrs[i] <= BT_HS_SPK_AUDIO_AVRC_APP_ATTR_SETTINGS_MAX)
+            if (attr <= BT_HS_SPK_AUDIO_AVRC_APP_ATTR_SETTINGS_MAX)
             {
                 /* Cache the available settings and count them. this is necessary to determine
                  * when all possible value requests are completed */
-                p_ctx->avrc.app_setting[list_app_attr->attrs[i]].available = WICED_TRUE;
+                p_ctx->avrc.app_setting[attr].available = WICED_TRUE;
                 p_ctx->avrc.num_app_settings++;
             }
         }
@@ -2542,8 +2872,13 @@ static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs
         /* For each app attribute determine the possible values */
         for ( i = 0; i < list_app_attr->num_attr; i++ )
         {
+#if BTSTACK_VER > 0x01020000
+            uint8_t attr = list_app_attr->p_attrs[i];
+#else
+            uint8_t attr = list_app_attr->attrs[i];
+#endif
             WICED_BT_TRACE( "[%s]: sending request for poss settings.\n", __FUNCTION__ );
-            result = wiced_bt_avrc_ct_list_player_values_cmd(p_ctx->avrc.handle, list_app_attr->attrs[i]);
+            result = wiced_bt_avrc_ct_list_player_values_cmd((uint8_t)p_ctx->avrc.handle, attr);
             if ( result != WICED_SUCCESS )
             {
                 break;
@@ -2564,10 +2899,19 @@ static void bt_hs_spk_audio_avrc_response_cb_list_player_app_attribute_rsp(bt_hs
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_avrc_metadata_list_app_values_rsp_t *list_app_values = &avrc_rsp->type.metadata.u.list_app_values;
+    uint8_t         attr_id = avrc_rsp->hdr.opcode;
+#else
     wiced_bt_avrc_list_app_values_rsp_t *list_app_values = &avrc_rsp->list_app_values;
     uint8_t         attr_id = list_app_values->opcode;
+#endif
     int             i, j, k;
     uint8_t         rsp[6] = {0};
     wiced_result_t  result;
@@ -2578,7 +2922,11 @@ static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_sp
     p_ctx->avrc.app_setting[attr_id].num_possible_values = list_app_values->num_val;
     for (i = 0; i < list_app_values->num_val; i++)
     {
+#if BTSTACK_VER > 0x01020000
+        p_ctx->avrc.app_setting[attr_id].possible_values[i] = list_app_values->p_vals[i];
+#else
         p_ctx->avrc.app_setting[attr_id].possible_values[i] = list_app_values->vals[i];
+#endif
     }
 
     /* Check if all app possible setting requests have completed */
@@ -2629,15 +2977,31 @@ static void bt_hs_spk_audio_avrc_response_cb_list_player_app_values_rsp(bt_hs_sp
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_get_cur_player_app_value(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+#else
 static void bt_hs_spk_audio_avrc_response_cb_get_cur_player_app_value(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
+#endif
 {
+#if BTSTACK_VER > 0x01020000
+    wiced_bt_avrc_metadata_get_cur_app_value_rsp_t *get_cur_app_val = &avrc_rsp->type.metadata.u.get_cur_app_val;
+    uint8_t idx = 0;
+#else
     wiced_bt_avrc_get_cur_app_value_rsp_t *get_cur_app_val = &avrc_rsp->get_cur_app_val;
+#endif
+    uint8_t attr_id;
+    uint8_t attr_val;
 
     /* We only asked for one attribute setting. */
     if (get_cur_app_val->num_val == 1)
     {
-        uint8_t attr_id  = get_cur_app_val->p_vals->attr_id;
-        uint8_t attr_val = get_cur_app_val->p_vals->attr_val;
+#if BTSTACK_VER > 0x01020000
+        attr_id = get_cur_app_val->p_vals[idx++]; //->attr_id;
+        attr_val = get_cur_app_val->p_vals[idx++]; //->attr_val;
+#else
+        attr_id  = get_cur_app_val->p_vals->attr_id;
+        attr_val = get_cur_app_val->p_vals->attr_val;
+#endif
         int i;
 
         /* Make sure the value is in the set of the list of possibilities */
@@ -2652,6 +3016,17 @@ static void bt_hs_spk_audio_avrc_response_cb_get_cur_player_app_value(bt_hs_spk_
             }
         }
     }
+
+#if BTSTACK_VER > 0x01020000
+    WICED_BT_TRACE( "[%s]: calling wiced_bt_avrc_ct_get_player_attrs_text_cmd : attr_id = %d \n", __FUNCTION__, attr_id);
+    wiced_result_t res = wiced_bt_avrc_ct_get_player_attrs_text_cmd((uint8_t)p_ctx->avrc.handle, 1, (uint8_t *) &attr_id);
+
+    if (res != WICED_SUCCESS)
+    {
+        WICED_BT_TRACE("[%s]: ERROR!!! sending request for current setting of attr %d. result: %d\n",
+                    __FUNCTION__, attr_id, res);
+    }
+#endif /* BTSTACK_VER */
 }
 
 /**
@@ -2666,6 +3041,17 @@ static void bt_hs_spk_audio_avrc_response_cb_get_cur_player_app_value(bt_hs_spk_
  *
  * @return          Nothing
  */
+#if BTSTACK_VER > 0x01020000
+static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_rsp_t *avrc_rsp)
+{
+    WICED_BT_TRACE("Play status (%B, %X, %d:%d)\n",
+                   p_ctx->peerBda,
+                   avrc_rsp->type.metadata.u.get_play_status.play_status,
+                   avrc_rsp->type.metadata.u.get_play_status.song_pos,
+                   avrc_rsp->type.metadata.u.get_play_status.song_len);
+
+}
+#else /* !BTSTACK_VER */
 static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_context_t *p_ctx, wiced_bt_avrc_response_t *avrc_rsp)
 {
     WICED_BT_TRACE("Play status (%B, 0x%02X, %X, %d:%d)\n",
@@ -2676,6 +3062,7 @@ static void bt_hs_spk_audio_avrc_response_cb_get_play_status(bt_hs_spk_audio_con
                    avrc_rsp->get_play_status.song_len);
 
 }
+#endif /* BTSTACK_VER */
 
 /**
  * bt_hs_spk_audio_audio_manager_stream_check
@@ -3137,6 +3524,10 @@ void bt_hs_spk_audio_vse_jitter_buffer_event_handler(uint8_t *p)
         (opcode == AV_SINK_PLAY_STATUS_IND))
     {
         extern uint16_t last_seq_num;
+#ifdef CYW55572
+        extern uint16_t wiced_audio_sink_last_seq_num;
+        last_seq_num = wiced_audio_sink_last_seq_num;
+#endif
 
         WICED_BT_TRACE("jitter_buffer_event_handler (status : 0x%02X)\n", status);
         if (status == JITTER_NORMAL_STATE)

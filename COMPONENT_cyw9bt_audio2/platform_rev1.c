@@ -89,14 +89,14 @@ extern platform_audio_port cs47l35_audio_port;
 /*platform SPI/I2S pin configs for supported codec*/
 platform_audio_port cs47l35_audio_port = {
     .spi_speed = SPI_FREQ_24MHZ,
-#ifndef CYW55572A0
+#ifndef CYW55572
     .spi_pin_clk = SPI_CLK,
     .spi_pin_cs = SPI_CS,
     .spi_pin_mosi = SPI_MOSI,
     .spi_pin_miso = SPI_MISO,
 #endif
     .i2s_mode = I2S_SLAVE,
-#ifndef CYW55572A0
+#ifndef CYW55572
     .i2s_pin_sclk = I2S_CLK,
     .i2s_pin_ws = I2S_WS,
     .i2s_pin_din = I2S_DI,

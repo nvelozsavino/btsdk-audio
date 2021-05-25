@@ -32,7 +32,7 @@
  */
 #include <stdint.h>
 #include "wiced_rtos.h"
-#ifndef CYW55572A0
+#ifndef CYW55572
 #include <hal/wiced_hal_pcm.h>
 #include <hal/wiced_hal_pspi.h>
 #endif

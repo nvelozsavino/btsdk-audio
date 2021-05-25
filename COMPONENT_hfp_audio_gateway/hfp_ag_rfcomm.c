@@ -352,7 +352,7 @@ static void hfp_ag_rfcomm_opened ( hfp_ag_session_cb_t *p_scb )
     p_scb->res_len              = 0;
     p_scb->sco_idx              = BTM_INVALID_SCO_INDEX;
     p_scb->b_sco_opened         = WICED_FALSE;
-
+    p_scb->indicator_bit_map    = 0x7F;
 #if (BTM_WBS_INCLUDED == TRUE)
     p_scb->peer_supports_msbc   = WICED_FALSE;
     p_scb->msbc_selected        = WICED_FALSE;

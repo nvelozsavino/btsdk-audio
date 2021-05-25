@@ -55,7 +55,8 @@
 #define HFP_VERSION_1_5                 0x0105
 #define HFP_VERSION_1_6                 0x0106
 #define HFP_VERSION_1_7                 0x0107
-#define HFP_AG_VERSION                  HFP_VERSION_1_6
+#define HFP_VERSION_1_8                 0x0108
+#define HFP_AG_VERSION                  HFP_VERSION_1_8
 
 /* HF feature masks */
 #define HFP_HF_FEAT_ECNR                0x00000001   /* Echo cancellation and/or noise reduction */
@@ -96,6 +97,17 @@
 
 #undef  BTM_WBS_INCLUDED
 #define BTM_WBS_INCLUDED                TRUE
+
+/* SDP SupportedFeatures attribute bit mapping for HF.
+   Table 5.4 of Hand-Free Profile 1.8 */
+#define WICED_BT_HFP_AG_SDP_FEATURE_3WAY_CALLING    0x0001  /* Call waiting or three-way calling (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_ECNR            0x0002  /* EC and/or NR function (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_VRECG           0x0004  /* Voice recognition activation (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_INBAND          0x0008  /* Inband Ringtone (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_VTAG            0x0010  /* Attach a phone number to a voice tag (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_WIDEBAND_SPEECH 0x0020  /* Wide band speech (yes:1, no:0) */
+#define WICED_BT_HFP_AG_SDP_FEATURE_EVRS            0x0040  /* Enhanced Voice Recognition Status (yes/no, 1 = yes, 0 = no)  */
+#define WICED_BT_HFP_AG_SDP_FEATURE_VRC_TEXT        0x0080  /* Voice Recognition Text (yes/no, 1 = yes, 0 = no) */
 
 /* type for each service control block */
 /* Handsfree device control block */
@@ -142,7 +154,7 @@ typedef struct
     BOOLEAN             clip_enabled;           /* set to TRUE if HF enables CLIP reporting */
     BOOLEAN             cmer_enabled;           /* set to TRUE if HF enables CMER reporting */
     BOOLEAN             cmee_enabled;           /* set to TRUE if HF enables CME ERROR reporting */
-
+    uint8_t             indicator_bit_map;      /* Indicator bit map */
 #if BTSTACK_VER >= 0x01020000
     /* TODO : for now fifo size if fixed, need to update the required max memory for rfcomm_fifo */
     uint8_t             rfcomm_fifo[400];
@@ -199,6 +211,10 @@ extern  void hfp_ag_audio_open( uint16_t handle );
  */
 extern void hfp_ag_audio_close( uint16_t handle );
 
+/*
+ * Current Call list status response
+ */
+extern void hfp_ag_send_cmd_str( uint16_t handle , uint8_t *data, uint8_t len);
 extern void hfp_ag_sco_management_callback( wiced_bt_management_evt_t event, wiced_bt_management_evt_data_t *p_event_data );
 
 /* AT functions */
@@ -207,6 +223,9 @@ extern void hfp_ag_send_BVRA_to_hf (hfp_ag_session_cb_t *p_scb, BOOLEAN b_is_act
 extern void hfp_ag_send_RING_to_hf (hfp_ag_session_cb_t *p_scb);
 extern uint8_t hfp_ag_send_VGM_to_hf (hfp_ag_session_cb_t *p_scb, INT16 gain);
 extern uint8_t hfp_ag_send_VGS_to_hf (hfp_ag_session_cb_t *p_scb, INT16 gain);
+extern uint8_t hfp_ag_send_cmd_str_to_hf (hfp_ag_session_cb_t *p_scb, char *data);
+extern void hfp_ag_send_OK_to_hf (hfp_ag_session_cb_t *p_scb);
+extern void hfp_ag_set_cind(char *cind_str, uint8_t length);
 
 #ifdef __cplusplus
 }
