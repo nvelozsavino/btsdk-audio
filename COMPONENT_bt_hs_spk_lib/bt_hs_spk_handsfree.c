@@ -120,6 +120,11 @@ static void             bt_hs_spk_handsfree_sco_management_callback_connected(ha
 static void             bt_hs_spk_handsfree_sco_management_callback_connection_request(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
 static void             bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data);
 
+
+static void hci_control_send_hf_event(uint16_t evt, uint16_t handle, hci_control_hfp_hf_event_t *p_data);
+static void bt_hs_spk_handsfree_event_handler_misc( wiced_bt_hfp_hf_event_t event, wiced_bt_hfp_hf_event_data_t* p_data);
+
+
 static uint8_t  bt_hs_spk_handsfree_speaker_volume_level_get(handsfree_app_state_t *p_ctx);
 static void     bt_hs_spk_handsfree_speaker_volume_level_set(handsfree_app_state_t *p_ctx, uint8_t volume_level);
 
@@ -716,6 +721,8 @@ static void bt_hs_spk_handsfree_sco_management_callback_connected(handsfree_app_
      * will NOT be received in OOR reconnection scenario. We need to set to active service
      * to HFP once the SCO/eSCO connection is connected. */
     app_set_current_service(&bt_hs_spk_handsfree_cb.app_service);
+
+    hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_AUDIO_OPEN, p_ctx->rfcomm_handle, NULL );
 }
 
 static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_app_state_t *p_ctx, wiced_bt_management_evt_data_t *p_data)
@@ -837,6 +844,12 @@ static void bt_hs_spk_handsfree_sco_management_callback_disconnected(handsfree_a
         bt_hs_spk_control_acl_link_policy_sniff_mode_set(NULL, WICED_TRUE);
         bt_hs_spk_control_bt_power_mode_set(WICED_FALSE, NULL, NULL);
     }
+
+    wiced_bt_hfp_hf_scb_t *p_scb = wiced_bt_hfp_hf_get_scb_by_bd_addr (p_ctx->peer_bd_addr);
+
+    hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_AUDIO_CLOSE, p_scb->rfcomm_handle, NULL );
+
+
 }
 
 /**
@@ -887,6 +900,13 @@ void hf_sco_management_callback(wiced_bt_management_evt_t event, wiced_bt_manage
     }
 }
 
+static void hci_control_send_hf_event(uint16_t evt, uint16_t handle, hci_control_hfp_hf_event_t *p_data){
+
+	if (bt_hs_spk_handsfree_cb.config.hci_send){
+		bt_hs_spk_handsfree_cb.config.hci_send(evt,handle,p_data);
+	}
+}
+
 /*
  * This function handles the HF event, WICED_BT_HFP_HF_CONNECTION_STATE_EVT.
  */
@@ -914,6 +934,10 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
         {
             bt_hs_spk_audio_app_service_set();
         }
+
+        hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_CLOSE, p_ctx->rfcomm_handle, NULL);
+
+
         break;
 
     case WICED_BT_HFP_HF_STATE_CONNECTED:
@@ -939,6 +963,26 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
             bt_hs_spk_control_bt_role_set(p_data->conn_data.remote_address, HCI_ROLE_PERIPHERAL);
 #endif
         }
+        {
+            wiced_bt_hfp_hf_scb_t *p_scb = wiced_bt_hfp_hf_get_scb_by_bd_addr (p_data->conn_data.remote_address);
+			hci_control_hfp_hf_open_t    open;
+			hci_control_hfp_hf_connect_t connect;
+			memcpy(open.bd_addr,p_data->conn_data.remote_address,BD_ADDR_LEN);
+					open.status = WICED_BT_SUCCESS;
+			hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_OPEN, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *) &open);
+
+			if( p_data->conn_data.connected_profile == WICED_BT_HFP_PROFILE )
+			{
+				connect.profile_selected = WICED_BT_HFP_PROFILE;
+				hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_PROFILE_TYPE, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *) &connect);
+			}
+			else
+			{
+				connect.profile_selected = WICED_BT_HSP_PROFILE;
+				hci_control_send_hf_event( HCI_CONTROL_HF_EVENT_PROFILE_TYPE, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *) &connect);
+			}
+        }
+
         break;
 
     case WICED_BT_HFP_HF_STATE_SLC_CONNECTED:
@@ -980,12 +1024,57 @@ static void bt_hs_spk_handsfree_event_handler_connection_state(handsfree_app_sta
     }
 }
 
+
+static void handsfree_send_clcc_evt (uint16_t handle, wiced_bt_hfp_hf_active_call_t *active_call, hci_control_hfp_hf_value_t *p_val)
+{
+    wiced_bt_hfp_hf_scb_t    *p_scb = wiced_bt_hfp_hf_get_scb_by_handle(handle);
+    int i = 0;
+
+    p_val->str[i++] = '0'+active_call->idx;
+    p_val->str[i++] = ',';
+    p_val->str[i++] = '0'+active_call->dir;
+    p_val->str[i++] = ',';
+    p_val->str[i++] = '0'+active_call->status;
+    p_val->str[i++] = ',';
+    p_val->str[i++] = '0'+active_call->mode;
+    p_val->str[i++] = ',';
+    p_val->str[i++] = '0'+active_call->is_conference;
+
+    if(active_call->type)
+    {
+        p_val->str[i++] = ',';
+        memcpy(&p_val->str[i],active_call->num,strlen(active_call->num));
+        i +=  strlen(active_call->num);
+        p_val->str[i++] = ',';
+        i += utl_itoa (active_call->type,&p_val->str[i]);
+    }
+    p_val->str[i++] = '\0';
+    hci_control_send_hf_event( HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_CLCC, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *)p_val );
+}
+
+static void handsfree_send_ciev_cmd (uint16_t handle, uint8_t ind_id,uint8_t ind_val, hci_control_hfp_hf_value_t *p_val)
+{
+    wiced_bt_hfp_hf_scb_t    *p_scb = wiced_bt_hfp_hf_get_scb_by_handle(handle);
+    p_val->str[0] = '0'+ind_id;
+    p_val->str[1] = ',';
+    p_val->str[2] = '0'+ind_val;
+    p_val->str[3] = '\0';
+    hci_control_send_hf_event( HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_CIEV, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *)p_val );
+}
+
+
+
+
 /*
  * This function handles the HF event, WICED_BT_HFP_HF_SERVICE_STATE_EVT.
  */
 static void bt_hs_spk_handsfree_event_handler_service_state(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
+	hci_control_hfp_hf_event_t     p_val;
+    memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
     WICED_BT_TRACE("HF Service State (%d)\n", p_data->service_state);
+    handsfree_send_ciev_cmd (p_data->handle,WICED_BT_HFP_HF_SERVICE_IND,p_data->service_state,&p_val.val);
+
 }
 
 /*
@@ -993,7 +1082,13 @@ static void bt_hs_spk_handsfree_event_handler_service_state(handsfree_app_state_
  */
 static void bt_hs_spk_handsfree_event_handler_service_type(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
+
     WICED_BT_TRACE("HF Service Type (%d)\n", p_data->service_type);
+
+    hci_control_hfp_hf_event_t     p_val;
+    memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
+    handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_ROAM_IND,p_data->service_type,&p_val.val);
+
 }
 
 /*
@@ -1039,6 +1134,71 @@ static void bt_hs_spk_handsfree_event_handler_codec_set(handsfree_app_state_t *p
         bt_hs_spk_handsfree_active_call_session_set(p_ctx);
     }
 }
+
+
+
+static void bt_hs_spk_handsfree_event_handler_misc( wiced_bt_hfp_hf_event_t event, wiced_bt_hfp_hf_event_data_t* p_data){
+	hci_control_hfp_hf_event_t     p_val;
+	int res = 0;
+	memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
+	switch(event)
+	{
+
+	case WICED_BT_HFP_HFP_ACTIVE_CALL_EVT:
+		handsfree_send_clcc_evt(p_data->handle,&p_data->active_call,&p_val.val);
+		break;
+
+	case WICED_BT_HFP_HF_RING_EVT:
+        WICED_BT_TRACE("%s: RING \n", __func__);
+        res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_RING;
+		break;
+
+	case WICED_BT_HFP_HF_AG_FEATURE_SUPPORT_EVT:
+		res = HCI_CONTROL_HF_EVENT_CONNECTED;
+		p_val.conn.peer_features = p_data->ag_feature_flags;
+		break;
+	case WICED_BT_HFP_HF_OK_EVT:
+		WICED_BT_TRACE("%s: OK \n", __func__);
+		res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_OK;
+		break;
+
+	case WICED_BT_HFP_HF_ERROR_EVT:
+		WICED_BT_TRACE("%s: Error \n", __func__);
+		res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_ERROR;
+		break;
+
+	case WICED_BT_HFP_HF_CME_ERROR_EVT:
+		WICED_BT_TRACE("%s: CME Error \n", __func__);
+		p_val.val.num = p_data->error_code;
+		res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_CMEE;
+		break;
+
+	case WICED_BT_HFP_HF_CNUM_EVT:
+		res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_CNUM;
+		memcpy(p_val.val.str, p_data->cnum_data, strlen(p_data->cnum_data));
+		break;
+
+	case WICED_BT_HFP_HF_BIND_EVT:
+		res = HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_BIND;
+		p_val.val.str[0] = p_data->bind_data.ind_id + '0';
+		p_val.val.str[1] = ',';
+		p_val.val.str[2] = p_data->bind_data.ind_value + '0';
+		break;
+	default:
+		return;
+	}
+    wiced_bt_hfp_hf_scb_t    *p_scb = wiced_bt_hfp_hf_get_scb_by_handle(p_data->handle);
+    if (p_scb==NULL){
+    	return;
+    }
+    if ( res && (res <= (HCI_CONTROL_HF_AT_EVENT_BASE + HCI_CONTROL_HF_AT_EVENT_MAX)) )
+	{
+		hci_control_send_hf_event( res, p_scb->rfcomm_handle, (hci_control_hfp_hf_event_t *)&p_val );
+	}
+}
+
+
+
 
 static void bt_hs_spk_handsfree_event_handler_call_setup_idle(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
@@ -1104,7 +1264,8 @@ static void bt_hs_spk_handsfree_event_handler_call_setup(handsfree_app_state_t *
     uint8_t hfp_volume_level;
     int32_t am_volume_level;
     wiced_bool_t allowed = WICED_FALSE;
-
+    hci_control_hfp_hf_event_t     p_val;
+    memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
     WICED_BT_TRACE("HF Call Setup (sco_index: %d) (active_call: %d, held_call: %d, setup_state: %d, 0x%08X 0x%08X)\n",
                    p_ctx->sco_index,
                    p_data->call_data.active_call_present,
@@ -1112,6 +1273,16 @@ static void bt_hs_spk_handsfree_event_handler_call_setup(handsfree_app_state_t *
                    p_data->call_data.setup_state,
                    bt_hs_spk_handsfree_cb.p_active_context,
                    p_ctx);
+
+	if (bt_hs_spk_handsfree_cb.p_active_context->call_active != p_data->call_data.active_call_present)
+		handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_CALL_IND,p_data->call_data.active_call_present,&p_val.val);
+
+	if (bt_hs_spk_handsfree_cb.p_active_context->call_held != p_data->call_data.held_call_present)
+		handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_CALL_HELD_IND,p_data->call_data.held_call_present,&p_val.val);
+
+	if (bt_hs_spk_handsfree_cb.p_active_context->call_setup != p_data->call_data.setup_state)
+		handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_CALL_SETUP_IND,p_data->call_data.setup_state,&p_val.val);
+
 
     switch (p_data->call_data.setup_state)
     {
@@ -1237,7 +1408,13 @@ static void bt_hs_spk_handsfree_event_handler_inband_ring_state(handsfree_app_st
  */
 static void bt_hs_spk_handsfree_event_handler_rssi_ind(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
+
     WICED_BT_TRACE("HF RSSI Ind (%d)\n", p_data->rssi);
+
+    hci_control_hfp_hf_event_t     p_val;
+    memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
+    handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_SIGNAL_IND,p_data->rssi,&p_val.val);
+
 }
 
 /*
@@ -1246,6 +1423,11 @@ static void bt_hs_spk_handsfree_event_handler_rssi_ind(handsfree_app_state_t *p_
 static void bt_hs_spk_handsfree_event_handler_battery_status_ind(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data)
 {
     WICED_BT_TRACE("HF Battery Status Ind (%d)\n", p_data->battery_level);
+
+    hci_control_hfp_hf_event_t     p_val;
+    memset(&p_val,0,sizeof(hci_control_hfp_hf_event_t));
+    handsfree_send_ciev_cmd(p_data->handle,WICED_BT_HFP_HF_BATTERY_IND,p_data->battery_level,&p_val.val);
+
 }
 
 /*
@@ -1393,6 +1575,7 @@ static void bt_hs_spk_handsfree_event_handler_ag_feature_support(handsfree_app_s
 
     /* Save information. */
     p_ctx->ag_features = p_data->ag_feature_flags;
+
 }
 
 
@@ -1443,7 +1626,7 @@ static void handsfree_event_callback( wiced_bt_hfp_hf_event_t event, wiced_bt_hf
     {
         (*bt_hs_spk_handsfree_cb.handsfree_event_handler[event])(p_ctx, p_data);
     }
-
+    bt_hs_spk_handsfree_event_handler_misc(event,p_data);
     if (bt_hs_spk_handsfree_cb.config.post_handler)
     {
         bt_hs_spk_handsfree_cb.config.post_handler(event, p_data);
@@ -2970,3 +3153,4 @@ void bt_hs_spk_handsfree_sco_mic_data_add_callback_register(bt_hs_spk_handsfree_
 {
     bt_hs_spk_handsfree_cb.p_mic_data_add_cb = p_cb;
 }
+

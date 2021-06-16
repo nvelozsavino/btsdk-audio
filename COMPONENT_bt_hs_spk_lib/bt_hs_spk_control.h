@@ -73,6 +73,7 @@
 #endif
 #include "wiced_bt_hfp_hf.h"
 #include "wiced_sleep.h"
+#include "wiced_bt_hfp_hf_int.h"
 ////// TEMP for compiling
 
 #ifndef BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS
@@ -242,6 +243,39 @@ typedef struct bt_hs_spk_control_config_audio
     } avrc_ct;
 } bt_hs_spk_control_config_audio_t;
 
+
+
+/* data associated with HF_OPEN_EVT */
+typedef struct
+{
+    BD_ADDR             bd_addr;
+    uint8_t             status;
+} hci_control_hfp_hf_open_t;
+
+/* data associated with AT command response event */
+typedef struct
+{
+    uint16_t            num;
+    char                str[WICED_BT_HFP_HF_MAX_AT_CMD_LEN];
+} hci_control_hfp_hf_value_t;
+
+/* data associated with HF_CONNECTED_EVT */
+typedef struct
+{
+    uint32_t           peer_features;
+    uint8_t            profile_selected;
+} hci_control_hfp_hf_connect_t;
+
+/* union of data associated with HS callback */
+typedef union
+{
+    hci_control_hfp_hf_open_t    open;
+    hci_control_hfp_hf_connect_t conn;
+    hci_control_hfp_hf_value_t   val;
+} hci_control_hfp_hf_event_t;
+
+typedef void (*hci_control_send_hf_event_t)(uint16_t evt, uint16_t handle, hci_control_hfp_hf_event_t *p_data);
+
 typedef struct bt_hs_spk_control_config_hfp
 {
     struct
@@ -261,6 +295,7 @@ typedef struct bt_hs_spk_control_config_hfp
      */
     BT_HS_SPK_CONTROL_HFP_CONTROL_CB_PRE_HANDLER    *p_pre_handler;
     wiced_bt_hfp_hf_event_cb_t                      post_handler;
+    hci_control_send_hf_event_t						hci_send;
 } bt_hs_spk_control_config_hfp_t;
 
 typedef struct bt_hs_spk_control_config_sleep
