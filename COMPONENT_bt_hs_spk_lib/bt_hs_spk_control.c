@@ -1343,7 +1343,7 @@ void bt_hs_spk_control_link_key_nvram_update(void)
             /* Inform user application. */
             if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
             {
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)();
+                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)( bt_hs_spk_control_cb.linkey,BT_HS_SPK_CONTROL_LINK_KEY_COUNT);
             }
         }
         else
@@ -1537,7 +1537,7 @@ BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_WRITE:
             /* Inform user application. */
             if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
             {
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)();
+                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)(bt_hs_spk_control_cb.linkey,BT_HS_SPK_CONTROL_LINK_KEY_COUNT);
             }
         }
         else

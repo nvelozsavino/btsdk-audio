@@ -73,7 +73,7 @@
 #endif
 #include "wiced_bt_hfp_hf.h"
 #include "wiced_sleep.h"
-#include "wiced_bt_hfp_hf_int.h"
+#include "bt_hs_spk_hci.h"
 ////// TEMP for compiling
 
 #ifndef BT_HS_SPK_CONTROL_BR_EDR_MAX_CONNECTIONS
@@ -144,7 +144,7 @@ typedef wiced_bool_t (BT_HS_SPK_CONTROL_AVRC_CT_CONNECTION_STATE_PRE_HANDLER)(ui
 typedef wiced_bool_t (BT_HS_SPK_CONTROL_VSE_CB)(uint8_t len, uint8_t *p);
 
 /* NVRAM space for link keys has been updated callback. */
-typedef void (BT_HS_SPK_CONTROL_NVRAM_LINK_KEYS_UPDATE_CB)(void);
+typedef void (BT_HS_SPK_CONTROL_NVRAM_LINK_KEYS_UPDATE_CB)(wiced_bt_device_link_keys_t* p_list, uint8_t len);
 
 /* Local volume change callback. */
 typedef void (BT_HS_SPK_CONTROL_LOCAL_VOLUME_CHANGE_CB)(int32_t am_vol_level, uint8_t am_vol_effect_event);
@@ -243,38 +243,6 @@ typedef struct bt_hs_spk_control_config_audio
     } avrc_ct;
 } bt_hs_spk_control_config_audio_t;
 
-
-
-/* data associated with HF_OPEN_EVT */
-typedef struct
-{
-    BD_ADDR             bd_addr;
-    uint8_t             status;
-} hci_control_hfp_hf_open_t;
-
-/* data associated with AT command response event */
-typedef struct
-{
-    uint16_t            num;
-    char                str[WICED_BT_HFP_HF_MAX_AT_CMD_LEN];
-} hci_control_hfp_hf_value_t;
-
-/* data associated with HF_CONNECTED_EVT */
-typedef struct
-{
-    uint32_t           peer_features;
-    uint8_t            profile_selected;
-} hci_control_hfp_hf_connect_t;
-
-/* union of data associated with HS callback */
-typedef union
-{
-    hci_control_hfp_hf_open_t    open;
-    hci_control_hfp_hf_connect_t conn;
-    hci_control_hfp_hf_value_t   val;
-} hci_control_hfp_hf_event_t;
-
-typedef void (*hci_control_send_hf_event_t)(uint16_t evt, uint16_t handle, hci_control_hfp_hf_event_t *p_data);
 
 typedef struct bt_hs_spk_control_config_hfp
 {
