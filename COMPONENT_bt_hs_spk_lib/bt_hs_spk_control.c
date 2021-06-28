@@ -1343,7 +1343,18 @@ void bt_hs_spk_control_link_key_nvram_update(void)
             /* Inform user application. */
             if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
             {
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)( bt_hs_spk_control_cb.linkey,BT_HS_SPK_CONTROL_LINK_KEY_COUNT);
+            	WICED_BT_TRACE("Inform user application 1\n");
+                uint8_t size=0;
+                for (uint8_t i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
+    			{
+    				if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
+    															  sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
+    				{
+    					break;
+    				}
+    				size++;
+    			}
+                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)( bt_hs_spk_control_cb.linkey,size);
             }
         }
         else
@@ -1370,6 +1381,7 @@ static void bt_hs_spk_control_link_key_update(wiced_bt_device_link_keys_t *link_
     uint16_t i;
     wiced_result_t status;
     uint16_t nb_bytes;
+	WICED_BT_TRACE("%s call\n",__FUNCTION__);
 
     /* Check if the entry already exists in the link key list. */
     for (i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
@@ -1537,7 +1549,20 @@ BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_WRITE:
             /* Inform user application. */
             if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
             {
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)(bt_hs_spk_control_cb.linkey,BT_HS_SPK_CONTROL_LINK_KEY_COUNT);
+            	WICED_BT_TRACE("Inform user application 2\n");
+
+                uint8_t size=0;
+                for (uint8_t i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
+    			{
+    				if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
+    															  sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
+    				{
+    					break;
+    				}
+    				size++;
+    			}
+
+                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)(bt_hs_spk_control_cb.linkey,size);
             }
         }
         else
