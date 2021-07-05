@@ -690,4 +690,8 @@ void bt_hs_spk_control_ble_conn_param_check(void);
  */
 wiced_result_t bt_hs_spk_audio_insert_start(bt_hs_spk_audio_insert_config_t *p_config);
 
+
+
+void bt_hs_spk_control_link_key_send();
+
 #endif /* BT_HS_SPK_CONTROL_H */

@@ -1340,22 +1340,7 @@ void bt_hs_spk_control_link_key_nvram_update(void)
             WICED_BT_TRACE("bt_hs_spk_control_link_key_nvram_update success\n");
             bt_hs_spk_control_cb.linkey_write_nvram_pending = WICED_FALSE;
 
-            /* Inform user application. */
-            if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
-            {
-            	WICED_BT_TRACE("Inform user application 1\n");
-                uint8_t size=0;
-                for (uint8_t i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
-    			{
-    				if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
-    															  sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
-    				{
-    					break;
-    				}
-    				size++;
-    			}
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)( bt_hs_spk_control_cb.linkey,size);
-            }
+            bt_hs_spk_control_link_key_send();
         }
         else
         {
@@ -1364,6 +1349,29 @@ void bt_hs_spk_control_link_key_nvram_update(void)
                     sizeof(wiced_bt_device_link_keys_t) * BT_HS_SPK_CONTROL_LINK_KEY_COUNT,
                     status);
         }
+    }
+}
+
+
+
+void bt_hs_spk_control_link_key_send(){
+    /* Inform user application. */
+    if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
+    {
+    	WICED_BT_TRACE("Inform user application 2\n");
+
+        uint8_t size=0;
+        for (uint8_t i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
+		{
+			if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
+														  sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
+			{
+				break;
+			}
+			size++;
+		}
+
+        (*bt_hs_spk_control_cb.nvram.link_key.p_callback)(bt_hs_spk_control_cb.linkey,size);
     }
 }
 
@@ -1546,24 +1554,7 @@ BT_HS_SPK_CONTROL_LINK_KEY_UPDATE_WRITE:
             WICED_BT_TRACE("bt_hs_spk_control_link_key_update success\n");
             bt_hs_spk_control_cb.linkey_write_nvram_pending = WICED_FALSE;
 
-            /* Inform user application. */
-            if (bt_hs_spk_control_cb.nvram.link_key.p_callback)
-            {
-            	WICED_BT_TRACE("Inform user application 2\n");
-
-                uint8_t size=0;
-                for (uint8_t i = 0 ; i < BT_HS_SPK_CONTROL_LINK_KEY_COUNT ; i++)
-    			{
-    				if (bt_hs_spk_control_misc_data_content_check((uint8_t *) bt_hs_spk_control_cb.linkey[i].bd_addr,
-    															  sizeof(wiced_bt_device_address_t)) == WICED_FALSE)
-    				{
-    					break;
-    				}
-    				size++;
-    			}
-
-                (*bt_hs_spk_control_cb.nvram.link_key.p_callback)(bt_hs_spk_control_cb.linkey,size);
-            }
+            bt_hs_spk_control_link_key_send();
         }
         else
         {
