@@ -98,7 +98,6 @@ static wiced_result_t bt_audio_hfp_reject_call_active_no(handsfree_app_state_t *
 
 static void             bt_hs_spk_handsfree_active_call_session_set(handsfree_app_state_t *p_ctx);
 static wiced_result_t   bt_hs_spk_handsfree_at_cmd_send(uint16_t handle, char *cmd, uint8_t arg_type, uint8_t arg_format, const char *p_arg, int16_t int_arg);
-static void             bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t *p_ctx);
 static void             bt_hs_spk_handsfree_call_hang_up(handsfree_app_state_t *p_ctx);
 static void             bt_hs_spk_handsfree_event_handler_ag_feature_support(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data);
 static void             bt_hs_spk_handsfree_event_handler_battery_status_ind(handsfree_app_state_t *p_ctx, wiced_bt_hfp_hf_event_data_t* p_data);
@@ -3024,7 +3023,7 @@ static void bt_hs_spk_handsfree_active_call_session_set(handsfree_app_state_t *p
  *
  * Establish the Audio Connection with the target AG.
  */
-static void bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t *p_ctx)
+void bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t *p_ctx)
 {
     wiced_bt_dev_status_t status;
     wiced_result_t result;

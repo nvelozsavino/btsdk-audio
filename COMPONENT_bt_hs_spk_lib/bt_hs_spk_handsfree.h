@@ -410,3 +410,7 @@ wiced_bool_t bt_hs_spk_handsfree_audio_manager_stream_check(void);
  * @return  current sampling rate
  */
 int32_t bt_hs_spk_handsfree_audio_manager_sampling_rate_get(void);
+
+
+void bt_hs_spk_handsfree_audio_connection_establish(handsfree_app_state_t *p_ctx);
+
