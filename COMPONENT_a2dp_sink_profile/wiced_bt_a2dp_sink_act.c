@@ -528,7 +528,7 @@ void wiced_bt_a2dp_sink_config_ind(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 {
     wiced_bt_a2dp_sink_scb_t          *p_scb = p_ccb->p_scb;
     wiced_bt_a2dp_sink_setconfig_rsp_t setconfig;
-    wiced_bt_avdt_sep_info_t          *p_info;
+    //wiced_bt_avdt_sep_info_t          *p_info;
     wiced_bt_avdt_cfg_t               *p_evt_cfg = &p_data->str_msg.cfg;
     uint8_t   psc_mask = (p_evt_cfg->psc_mask & p_scb->cfg.psc_mask) | p_scb->cfg.psc_mask;
 
@@ -563,7 +563,7 @@ void wiced_bt_a2dp_sink_config_ind(wiced_bt_a2dp_sink_ccb_t *p_ccb,
 
         p_scb->avdt_handle = p_data->str_msg.handle;
         p_scb->peer_sep_idx = p_data->str_msg.msg.config_ind.int_seid;
-        WICED_BTA2DP_TRACE("%s: SEID: %d handle = 0x%x \n", __FUNCTION__, p_info->seid, p_scb->avdt_handle);
+      //  WICED_BTA2DP_TRACE("%s: SEID: %d handle = 0x%x \n", __FUNCTION__, p_info->seid, p_scb->avdt_handle);
         p_scb->cur_psc_mask = p_evt_cfg->psc_mask;
 
         wiced_bt_a2dp_sink_cfg_setcfg_ind_handler(
