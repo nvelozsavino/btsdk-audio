@@ -540,6 +540,10 @@ static void app_service_action_arbitrator( app_service_action_t action )
     return;
 }
 
+void bt_hs_spk_button_execute_action(app_service_action_t action){
+	app_service_action_arbitrator(action);
+}
+
 static void bt_hs_spk_button_event_handler(platform_button_t button, button_manager_event_t event, button_manager_button_state_t state, uint32_t repeat)
 {
     uint32_t button_event_id = BUTTON_EVENT_ID(button, event, state);

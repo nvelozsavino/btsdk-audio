@@ -95,6 +95,8 @@ typedef enum
     ACTION_BT_CALL_REJECT               = ACTION_BT_DISCOVERABLE,
     ACTION_VOICE_RECOGNITION            = 0x0e,
     ACTION_TRANSPORT_DETECT_ON          = 0x0f,
+	ACTION_PLAY 						= 0x10,
+	ACTION_PAUSE 						= 0x11,
 } app_service_action_t;
 
 /******************************************************
@@ -201,6 +203,9 @@ uint16_t bt_hs_spk_button_get_remain_bt_service_timer(void);
  */
 void bt_hs_spk_button_lrac_switch_restore_visibility(wiced_bool_t dissoverable, wiced_bool_t connectable, uint16_t remain_time);
 
+
+
+void bt_hs_spk_button_execute_action(app_service_action_t action);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

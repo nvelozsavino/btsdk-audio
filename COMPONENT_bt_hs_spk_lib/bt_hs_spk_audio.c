@@ -127,6 +127,8 @@ static bt_hs_spk_audio_cb_t bt_hs_spk_audio_cb = {0};
 static void bt_hs_spk_audio_local_streaming_stop(void);
 static void             bt_hs_spk_audio_a2dp_sink_cb(wiced_bt_a2dp_sink_event_t event, wiced_bt_a2dp_sink_event_data_t* p_data);
 static wiced_result_t   bt_hs_spk_audio_button_handler(app_service_action_t action);
+static wiced_result_t   bt_hs_spk_audio_button_handler_play(void);
+static wiced_result_t   bt_hs_spk_audio_button_handler_pause(void);
 static wiced_result_t   bt_hs_spk_audio_button_handler_pause_play(void);
 static void             bt_hs_spk_audio_cb_init(void);
 static void             bt_hs_spk_audio_playstate_update(wiced_bt_device_address_t bd_addr, wiced_bool_t played);
@@ -1515,6 +1517,157 @@ static wiced_result_t bt_hs_spk_audio_button_handler_volume_down(void)
     return WICED_SUCCESS;
 }
 
+
+static wiced_result_t bt_hs_spk_audio_button_handler_play(void)
+{
+    wiced_result_t result = WICED_ERROR;
+
+    /* Check if the active context exists. */
+    if (bt_hs_spk_audio_cb.p_active_context == NULL)
+    {
+        bt_hs_spk_control_reconnect();
+
+        return WICED_SUCCESS;
+    }
+
+    /* Check if the A2DP is connected and is not playing music. */
+    if ((bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_CONNECTED) ||
+        (bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_PAUSE_PENDING))
+    {   /* The A2DP streaming is stopped. */
+        /* Check if the AVRC is connected. If it is, use the AVRC command
+         * to start the streaming. Otherwise, use the AVDTP Suspend command
+         * to start the streaming.*/
+        if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED)
+        {
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
+            result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0,
+                                                            NULL);
+#endif
+        }
+        else
+        {
+            result = wiced_bt_a2dp_sink_start(bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+#if BTSTACK_VER > 0x01020000
+            if (result == WICED_SUCCESS)
+            {
+                /* configure audio sink route */
+                wiced_audio_sink_route_config_stream_switch(
+                        bt_hs_spk_audio_cb.p_active_context->a2dp.handle);
+            }
+#endif
+        }
+
+        if (result == WICED_SUCCESS)
+        {
+            /* Update A2DP state. */
+            WICED_BT_TRACE("bt_hs_spk_audio_button_handler_play (state: %d -> %d)\n",
+                           bt_hs_spk_audio_cb.p_active_context->a2dp.state,
+                           BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING);
+
+            bt_hs_spk_audio_cb.p_active_context->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING;
+
+            /* To shorten the delay of start of the expected audio streaming, set the link
+             * to active mode. */
+            bt_hs_spk_control_bt_power_mode_set(WICED_TRUE,
+                                                bt_hs_spk_audio_cb.p_active_context->peerBda,
+                                                NULL);
+        }
+
+        return result;
+    }
+
+    /* Transmit the corresponding command if the AVRC is connected. */
+    if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED)
+    {
+        if ((bt_hs_spk_audio_cb.p_active_context->avrc.playstate == AVRC_PLAYSTATE_STOPPED) ||
+            (bt_hs_spk_audio_cb.p_active_context->avrc.playstate == AVRC_PLAYSTATE_PAUSED))
+        {
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
+            result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PLAY,
+                                                            AVRC_STATE_PRESS,
+                                                            0,
+                                                            NULL);
+#endif
+        }
+    }
+
+    return result;
+}
+static wiced_result_t bt_hs_spk_audio_button_handler_pause(void)
+{
+    wiced_result_t result = WICED_ERROR;
+
+    /* Check if the active context exists. */
+    if (bt_hs_spk_audio_cb.p_active_context == NULL)
+    {
+        bt_hs_spk_control_reconnect();
+
+        return WICED_SUCCESS;
+    }
+
+    /* Check if the A2DP is connected and playing music. */
+    if ((bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_START_PENDING) ||
+        (bt_hs_spk_audio_cb.p_active_context->a2dp.state == BT_HS_SPK_AUDIO_A2DP_STATE_STARTED))
+    {   // The A2DP is streaming now.
+        /* Check if the AVRC is connected. If it is, use the AVRC command
+         * to pause the streaming. Otherwise, use the AVDTP Suspend command
+         * to suspend the streaming.*/
+        result = bt_hs_spk_audio_streaming_pause(bt_hs_spk_audio_cb.p_active_context);
+
+        if (result == WICED_SUCCESS)
+        {
+            /* Update A2DP state. */
+            WICED_BT_TRACE("bt_hs_spk_audio_button_handler_pause (state: %d -> %d)\n",
+                           bt_hs_spk_audio_cb.p_active_context->a2dp.state,
+                           BT_HS_SPK_AUDIO_A2DP_STATE_PAUSE_PENDING);
+
+            bt_hs_spk_audio_cb.p_active_context->a2dp.state = BT_HS_SPK_AUDIO_A2DP_STATE_PAUSE_PENDING;
+        }
+
+        return result;
+    }
+
+
+    /* Transmit the corresponding command if the AVRC is connected. */
+    if (bt_hs_spk_audio_cb.p_active_context->avrc.state >= REMOTE_CONTROL_CONNECTED)
+    {
+        if ((bt_hs_spk_audio_cb.p_active_context->avrc.playstate != AVRC_PLAYSTATE_STOPPED) &&
+            (bt_hs_spk_audio_cb.p_active_context->avrc.playstate != AVRC_PLAYSTATE_PAUSED))
+        {
+            WICED_BT_TRACE("Send AVRC PAUSE to %B\n", bt_hs_spk_audio_cb.p_active_context->peerBda);
+
+#if BTSTACK_VER > 0x01020000
+            result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t)bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PAUSE,
+                                                            AVRC_STATE_PRESS,
+                                                            0);
+#else
+            result = wiced_bt_avrc_ct_send_pass_through_cmd(bt_hs_spk_audio_cb.p_active_context->avrc.handle,
+                                                            AVRC_ID_PAUSE,
+                                                            AVRC_STATE_PRESS,
+                                                            0,
+                                                            NULL);
+#endif
+        }
+    }
+
+    return result;
+}
+
 static wiced_result_t bt_hs_spk_audio_button_handler_pause_play(void)
 {
     wiced_result_t result = WICED_ERROR;
@@ -1737,6 +1890,12 @@ static wiced_result_t bt_hs_spk_audio_button_handler(app_service_action_t action
             break;
         case ACTION_PAUSE_PLAY:
             ret = bt_hs_spk_audio_button_handler_pause_play();
+            break;
+        case ACTION_PLAY:
+            ret = bt_hs_spk_audio_button_handler_play();
+            break;
+        case ACTION_PAUSE:
+            ret = bt_hs_spk_audio_button_handler_pause();
             break;
         case ACTION_FORWARD:
             ret = bt_hs_spk_audio_button_handler_skip_stop_fastforward_rewind(AVRC_ID_FORWARD, AVRC_STATE_PRESS);
