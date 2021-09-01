@@ -138,6 +138,8 @@ typedef struct
 
     audio_config_t                  audio_config;   /* Audio Configuration */
     uint8_t                         abs_vol;        /* Absolute volume. */
+    wiced_bool_t					muted;
+    uint8_t 						unmute_vol;
 } bt_hs_spk_audio_context_t;
 
 typedef struct bt_hs_spk_audio_context_info

@@ -1544,7 +1544,7 @@ static void wiced_bt_avrc_ct_handle_notification_rsp(
 
             case AVRC_RSP_CHANGED:
                 rcc_dev->last_UID_counter = reg_notif->param.uid_counter;
-
+                break;
             case AVRC_RSP_REJ:
                 /* Resubmit the notification cmd if not disconnecting. Reuse label */
                 wiced_bt_avrc_ct_register_for_notification( rcc_dev, reg_notif->event_id, transaction );
@@ -1691,7 +1691,7 @@ void wiced_bt_avrc_ct_handle_msg(uint8_t handle, uint8_t label, uint8_t opcode, 
     {
         /* check if operation is supported */
         p_msg->hdr.ctype = wiced_bt_avrc_ct_operation_supported( p_msg->pass.op_id );
-
+        WICED_BT_TRACE("AVRC PASSTHRU op %02x %d\n",p_msg->pass.op_id,p_msg->hdr.ctype);
         /* send response */
         wiced_bt_avrc_pass_rsp( handle, label, &p_msg->pass );
 
@@ -2834,7 +2834,8 @@ wiced_result_t wiced_bt_avrc_ct_send_pass_through_cmd(
 
     prcc_dev = wiced_bt_avrc_ct_device_for_handle(handle);
 
-    WICED_BTAVRCP_TRACE( "%s prcc_dev [%p] CMD[%x] data_len[%d]\n", __FUNCTION__, prcc_dev, cmd, data_len );
+    WICED_BTAVRCP_TRACE( "%s prcc_dev [%d] CMD[%x] data_len[%d]\n", __FUNCTION__, prcc_dev!=NULL?1:0, cmd, data_len );
+    WICED_BTAVRCP_TRACE( "%s CMD[%x]\n", __FUNCTION__, cmd, data_len );
 
     if( prcc_dev != NULL )
     {

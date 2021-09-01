@@ -240,6 +240,15 @@ typedef struct bt_hs_spk_control_config_audio
             wiced_bt_avrc_ct_pt_rsp_cback_t             pre_handler;
             wiced_bt_avrc_ct_pt_rsp_cback_t             post_handler;
         } passthrough_rsp_cb;
+
+#ifdef CT_HANDLE_PASSTHROUGH_COMMANDS
+        struct
+		{
+        	wiced_bt_avrc_ct_pt_rx_cback_t 				pre_handler;
+        	wiced_bt_avrc_ct_pt_rx_cback_t				post_handler;
+		} passthrough_rx_cb;
+#endif
+
     } avrc_ct;
 } bt_hs_spk_control_config_audio_t;
 

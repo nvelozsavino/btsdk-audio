@@ -450,6 +450,11 @@ static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t
     uint8_t abs_vol;
     bt_hs_spk_audio_context_t *p_ctx;
 
+    if (bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rx_cb.pre_handler)
+    {
+        bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rx_cb.pre_handler(handle, op_id);
+    }
+
     /* Check if handle value is valid. */
     p_ctx = bt_hs_spk_audio_context_get_avrc_handle((uint16_t) handle, WICED_FALSE);
     if (p_ctx == NULL)
@@ -463,7 +468,12 @@ static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t
     case AVRC_ID_VOL_UP:    // 0x41: Volume Up
        WICED_BT_TRACE("AVRC_ID_VOL_UP\n");
 
-       abs_vol = p_ctx->abs_vol;
+       if (p_ctx->muted){
+    	   abs_vol = p_ctx->unmute_vol;
+    	   p_ctx->muted=WICED_FALSE;
+       } else {
+    	   abs_vol = p_ctx->abs_vol;
+       }
 
        if (abs_vol == BT_HS_SPK_AUDIO_VOLUME_MAX)
        {
@@ -502,8 +512,25 @@ static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t
 
        bt_hs_spk_audio_volume_update(abs_vol, WICED_TRUE, p_ctx == bt_hs_spk_audio_cb.p_active_context, p_ctx);
        break;
+    case AVRC_ID_MUTE:  // 0x43: Mute
+    	WICED_BT_TRACE("AVRC_ID_MUTE\n");
+
+    	if (p_ctx->muted){
+    		abs_vol = p_ctx->unmute_vol;
+    		p_ctx->muted=WICED_FALSE;
+    	} else {
+    		abs_vol = BT_HS_SPK_AUDIO_VOLUME_MIN;
+    		p_ctx->muted=WICED_TRUE;
+    	}
+        bt_hs_spk_audio_volume_update(abs_vol, WICED_TRUE, p_ctx == bt_hs_spk_audio_cb.p_active_context, p_ctx);
+        break;
     default:
        break;
+    }
+
+    if (bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rx_cb.post_handler)
+    {
+        bt_hs_spk_audio_cb.config.avrc_ct.passthrough_rx_cb.post_handler(handle, op_id);
     }
 }
 #endif
@@ -1961,6 +1988,9 @@ static wiced_result_t bt_hs_spk_audio_volume_update(uint8_t abs_vol, wiced_bool_
 
     /* Update absolute volume. */
     p_ctx->abs_vol = abs_vol;
+    if (!p_ctx->muted){
+    	p_ctx->unmute_vol=abs_vol;
+    }
     /* This print is for SVT automation script */
     WICED_BT_TRACE("volume_update abs_volume:%d (%d percent) \n", p_ctx->abs_vol,
             p_ctx->abs_vol * 100 /  MAX_AVRCP_VOLUME_LEVEL);
