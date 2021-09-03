@@ -453,3 +453,6 @@ wiced_bool_t bt_hs_spk_audio_current_streaming_addr_get(wiced_bt_device_address_
 //=================================================================================================
 //  End of File (bt_hs_spk_audio.h)
 //=================================================================================================
+wiced_result_t bt_hs_spk_audio_set_volume(uint16_t handle, uint8_t volume);
+
+wiced_result_t bt_hs_spk_auido_mute_toggle(uint16_t handle);

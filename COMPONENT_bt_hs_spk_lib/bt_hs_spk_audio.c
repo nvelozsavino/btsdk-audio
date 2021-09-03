@@ -534,6 +534,9 @@ static void bt_hs_spk_audio_avrc_passthrough_cmd_handler(uint8_t handle, uint8_t
     }
 }
 #endif
+
+
+
 /**************************************************************************************************
 * Function:     bt_hs_spk_audio_init
 *
@@ -2627,6 +2630,45 @@ static void bt_hs_spk_audio_avrc_command_cb(uint8_t handle, wiced_bt_avrc_comman
     {
         bt_hs_spk_audio_cb.config.avrc_ct.command_cb.post_handler(handle, avrc_cmd);
     }
+}
+
+
+wiced_result_t bt_hs_spk_audio_set_volume(uint16_t handle, uint8_t volume){
+    bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_avrc_handle(handle, WICED_FALSE);
+
+
+    if (p_ctx == NULL)
+    {
+        return WICED_BADARG;
+    }
+    return bt_hs_spk_audio_volume_update(volume,WICED_TRUE,
+                                             bt_hs_spk_audio_cb.p_active_context == p_ctx ? WICED_TRUE : WICED_FALSE,
+                                             p_ctx);
+}
+
+
+wiced_result_t bt_hs_spk_auido_mute_toggle(uint16_t handle){
+	 bt_hs_spk_audio_context_t *p_ctx = bt_hs_spk_audio_context_get_avrc_handle(handle, WICED_FALSE);
+	 wiced_result_t result=WICED_SUCCESS;
+	 uint8_t abs_vol;
+	if (p_ctx == NULL)
+	{
+		return WICED_BADARG;
+	}
+	if (p_ctx->muted){
+		abs_vol = p_ctx->unmute_vol;
+		p_ctx->muted=WICED_FALSE;
+	} else {
+		abs_vol = BT_HS_SPK_AUDIO_VOLUME_MIN;
+		p_ctx->muted=WICED_TRUE;
+	}
+    result = bt_hs_spk_audio_volume_update(abs_vol, WICED_TRUE, p_ctx == bt_hs_spk_audio_cb.p_active_context, p_ctx);
+//#if BTSTACK_VER > 0x01020000
+//        result = wiced_bt_avrc_ct_send_pass_through_cmd((uint8_t) handle, AVRC_ID_MUTE, p_ctx->avrc.state, 0 );
+//#else
+//        result = wiced_bt_avrc_ct_send_pass_through_cmd( handle, AVRC_ID_MUTE, p_ctx->avrc.state, 0, NULL );
+//#endif
+        return result;
 }
 
 /**
