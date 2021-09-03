@@ -3050,6 +3050,14 @@ static void bt_hs_spk_audio_avrc_response_cb_get_element_attribute_rsp(bt_hs_spk
             }
         }
     }
+
+    WICED_BT_TRACE( "REQUEST FOLDER_ITEMS\n");
+    wiced_result_t result = wiced_bt_avrc_ct_get_folder_items_cmd(p_ctx->avrc.handle, AVRC_SCOPE_PLAYER_LIST, 0x00, 0x02, 0x00, NULL);
+    if (result!=WICED_SUCCESS){
+    	WICED_BT_TRACE( "\nREQUEST FOLDER_ITEMS ERROR:%08x\n", result);
+    }
+
+
 #endif /* BTSTACK_VER */
 }
 

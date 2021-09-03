@@ -417,6 +417,11 @@ static void wiced_bt_avrc_ct_connection_open(uint8_t dev_idx, uint8_t role, wice
 static void wiced_bt_avrc_ct_connection_open(uint8_t *p_handle, uint8_t role, wiced_bt_device_address_t bdaddr, uint8_t local_feature);
 #endif
 
+
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+static void wiced_bt_avrc_ct_handle_get_folder_items(rcc_device_t *rcc_dev, uint8_t label, uint8_t code, wiced_bt_avrc_response_t *p_rsp);
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1479,12 +1484,24 @@ static void wiced_bt_avrc_ct_handle_getcaps_rsp(
 
     WICED_BTAVRCP_TRACE( "%s: Enter... status: %d count [%d]\n", __FUNCTION__, p_gcrsp->status, p_gcrsp->count  );
 
+    WICED_BTAVRCP_TRACE( "CAPABILITIES: PDU: %02x. OPCODE: %02x. CAP: %02x\n", p_gcrsp->pdu, p_gcrsp->opcode, p_gcrsp->capability_id );
+    for (uint8_t i=0;i<p_gcrsp->count;i++){
+    	WICED_BTAVRCP_TRACE( "\tPARAM[%d]: COMPANY_ID: %08x EVENT_ID: %02x\n",
+    			i,
+				p_gcrsp->param.company_id[i],
+				p_gcrsp->param.event_id[i]);
+    }
+    WICED_BTAVRCP_TRACE( "CAPABILITIES: END\n");
+
+
     /* Need to determine if this is a successful response before registering */
     if( AVRC_STS_NO_ERROR == p_gcrsp->status )
     {
         /* Register for notifications for supported events */
         wiced_bt_avrc_ct_register_for_notifications(rcc_dev, p_rsp);
     }
+
+
 
     /* Inform the app using this API that the initialization sequence is complete. */
     if (rcc_cb.connection_cb != NULL)
@@ -2397,22 +2414,24 @@ static void wiced_bt_avrc_ct_metadata_response_event_cback( uint8_t handle, uint
                 case AVRC_PDU_LIST_PLAYER_APP_VALUES:
                     wiced_bt_avrc_ct_handle_list_player_app_values_rsp( rcc_dev, transaction, &avrc_rsp );
                     break;
-
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+                case AVRC_PDU_GET_FOLDER_ITEMS:
+                	wiced_bt_avrc_ct_handle_get_folder_items(rcc_dev,label, p_data->hdr.ctype, &avrc_rsp);
+                	break;
+#endif
                 case AVRC_PDU_GET_PLAYER_APP_ATTR_TEXT:
                 case AVRC_PDU_GET_PLAYER_APP_VALUE_TEXT:
 
 #if AVRC_ADV_CTRL_INCLUDED == TRUE
                 case AVRC_PDU_SET_ADDRESSED_PLAYER:
                 case AVRC_PDU_SET_BROWSED_PLAYER:
-                case AVRC_PDU_GET_FOLDER_ITEMS:
                 case AVRC_PDU_CHANGE_PATH:
                 case AVRC_PDU_GET_ITEM_ATTRIBUTES:
                 case AVRC_PDU_PLAY_ITEM:
                 case AVRC_PDU_SEARCH:
                 case AVRC_PDU_ADD_TO_NOW_PLAYING:
 #endif
-                    break;
-
+                	break;
                 default:
                     break;
             }
@@ -2429,6 +2448,74 @@ static void wiced_bt_avrc_ct_metadata_response_event_cback( uint8_t handle, uint
         }
     }
 }
+
+#if AVRC_ADV_CTRL_INCLUDED == TRUE
+static void wiced_bt_avrc_ct_handle_get_folder_items(rcc_device_t *rcc_dev, uint8_t label, uint8_t code, wiced_bt_avrc_response_t *p_rsp){
+	wiced_bt_avrc_get_items_rsp_t* rsp = &p_rsp->get_items;
+
+	WICED_BTAVRCP_TRACE("FOLDER_ITMES, PDU: [%02x] STATUS: %02x, OPCODE: %02x, UID_COUNTER: %d, ITEM_COUNT: %d\n",
+			rsp->pdu,
+			rsp->status,
+			rsp->opcode,
+			rsp->uid_counter,
+			rsp->item_count);
+	for (uint16_t i=0;i<rsp->item_count;i++){
+		wiced_bt_avrc_item_t* item = &rsp->p_item_list[i];
+		WICED_BTAVRCP_TRACE("\tITME[%d]:",i);
+				switch(item->item_type){
+				case AVRC_ITEM_PLAYER:{
+					wiced_bt_avrc_item_player_t* player = &item->u.player;
+					WICED_BTAVRCP_TRACE("PLAYER: %.*s, ID:%04x, MAYOR_TYPE: %02x, SUB_TYPE: %08x, PLAY_STATUS %02x\n",
+							player->name.str_len, player->name.p_str,
+							player->player_id,
+							player->major_type,
+							player->sub_type,
+							player->play_status);
+					WICED_BTAVRCP_TRACE("\tFEATURE_MASK:");
+					for (uint8_t j=0;j<AVRC_FEATURE_MASK_SIZE;j++){
+						WICED_BTAVRCP_TRACE(" %02x",player->features[j]);
+					}
+					WICED_BTAVRCP_TRACE("\n");
+					break;
+				}
+				case AVRC_ITEM_FOLDER:{
+					wiced_bt_avrc_item_folder_t* folder = &item->u.folder;
+
+					WICED_BTAVRCP_TRACE("FOLDER %.*s UID:",
+							folder->name.str_len, folder->name.p_str);
+					for (uint8_t j=0;j<AVRC_UID_SIZE;j++){
+						WICED_BTAVRCP_TRACE(" %02x",folder->uid[j]);
+					}
+					WICED_BTAVRCP_TRACE(" TYPE: %02x PLAYABLE: %d\n", folder->type, folder->playable);
+					break;
+				}
+				case AVRC_ITEM_MEDIA:{
+					wiced_bt_avrc_item_media_t* media = &item->u.media;
+
+					WICED_BTAVRCP_TRACE("MEDIA %.*s UID:",
+							media->name.str_len, media->name.p_str);
+					for (uint8_t j=0;j<AVRC_UID_SIZE;j++){
+						WICED_BTAVRCP_TRACE(" %02x",media->uid[j]);
+					}
+					WICED_BTAVRCP_TRACE(" TYPE: %02x ATTR_COUNT: %d\n", media->type, media->attr_count);
+
+					WICED_BTAVRCP_TRACE("\tATTRIBUTES:");
+					for (uint8_t j=0;j<media->attr_count;j++){
+						wiced_bt_avrc_attr_entry_t* entry = &media->p_attr_list[j];
+						WICED_BTAVRCP_TRACE("[%d] ID:%08x. %.*s %02x",
+								j, entry->attr_id, entry->name.str_len, entry->name.p_str);
+					}
+					WICED_BTAVRCP_TRACE("\n");
+					break;
+				}
+				default:
+					WICED_BTAVRCP_TRACE("UNKNOWN TYPE: %02x\n",item->item_type);
+					break;
+				}
+	}
+}
+#endif
+
 
 /*******************************************************************************
 **
